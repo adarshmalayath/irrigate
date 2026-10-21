@@ -1,0 +1,24 @@
+# render.yaml — Render.com deployment config
+# https://render.com/docs/render-yaml
+
+services:
+  - type: web
+    name: irrigate
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --worker-class gevent --workers 1 --bind 0.0.0.0:$PORT --timeout 120
+    envVars:
+      - key: OPENWEATHER_API_KEY
+        sync: false          # Set this in Render dashboard → Environment
+      - key: SECRET_KEY
+        generateValue: true  # Render auto-generates a secure random value
+      - key: HOME_LAT
+        sync: false          # Set in Render dashboard → Environment
+      - key: HOME_LON
+        sync: false          # Set in Render dashboard → Environment
+      - key: HOME_POSTCODE
+        sync: false          # Set in Render dashboard → Environment
+      - key: HOME_LABEL
+        sync: false          # Set in Render dashboard → Environment
+      - key: PYTHON_VERSION
+        value: "3.11.9"
