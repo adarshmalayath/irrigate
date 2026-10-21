@@ -26,7 +26,8 @@ const $  = id  => document.getElementById(id);
 const $$ = sel => document.querySelectorAll(sel);
 
 // ─── Socket ──────────────────────────────────────
-const socket = io({ transports: ["websocket", "polling"] });
+const API_BASE = window.IRRIGATE_API_BASE || window.location.origin;
+const socket = io(API_BASE, { transports: ["polling", "websocket"] });
 
 socket.on("connect", () => {
   state.connected = true;
@@ -406,7 +407,7 @@ function toggleAllZones(on) {
 }
 
 function refillTank() {
-  fetch("/api/tank/refill", { method: "POST" })
+  fetch(`${API_BASE}/api/tank/refill`, { method: "POST" })
     .then(() => showToast("🚿 Tank refilled to 100%!", "success"));
 }
 
@@ -449,7 +450,7 @@ function setHomeLocation(lat, lon, label) {
   state.homeLabel = label;
   socket.emit("set_home", { lat, lon, label });
   // Also update weather for new location
-  fetch("/api/set_home", {
+  fetch(`${API_BASE}/api/set_home`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ lat, lon }),

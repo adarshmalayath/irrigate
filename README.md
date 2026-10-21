@@ -26,6 +26,15 @@ PORT=5001 python3 app.py
 
 Open **http://localhost:5001** in your browser.
 
+## Public site
+
+The Render service hosts the Flask backend. GitHub Pages hosts a static copy of the dashboard and connects it to that backend:
+
+- Render backend: <https://irrigate-v3dw.onrender.com>
+- GitHub Pages site: <https://adarshmalayath.github.io/irrigate/>
+
+The workflow in `.github/workflows/pages.yml` publishes the site whenever changes are pushed to `main`. It builds the static files from `templates/index.html` and `static/`, so the Flask app and Pages dashboard use the same UI source.
+
 ## Project Structure
 ```
 Irrigate/
