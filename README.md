@@ -33,7 +33,7 @@ The Render service hosts the Flask backend. GitHub Pages hosts a static copy of 
 - Render backend: <https://irrigate-v3dw.onrender.com>
 - GitHub Pages site: <https://adarshmalayath.github.io/irrigate/>
 
-The workflow in `.github/workflows/pages.yml` publishes the site whenever changes are pushed to `main`. It builds the static files from `templates/index.html` and `static/`, so the Flask app and Pages dashboard use the same UI source.
+The ready-to-publish static files are in `docs/`. In the repository's **Settings → Pages**, choose **Deploy from a branch**, then select `main` and `/docs`. Rebuild `docs/` after UI changes with `python3 scripts/build_pages.py --output docs --api-base https://irrigate-v3dw.onrender.com`.
 
 ## Project Structure
 ```

@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🌿 Irrigate — Smart Garden</title>
+  <link rel="stylesheet" href="static/css/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script>window.IRRIGATE_API_BASE = "https://irrigate-v3dw.onrender.com";</script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body class="dark">
+
+<!-- ══════════════════════════════════════════
+     SIDEBAR
+═══════════════════════════════════════════ -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <span class="logo-icon">🌿</span>
+    <span class="logo-text">Irrigate</span>
+  </div>
+
+  <nav class="sidebar-nav">
+    <a href="#" class="nav-item active" data-section="dashboard">
+      <span class="nav-icon">⊞</span> Dashboard
+    </a>
+    <a href="#" class="nav-item" data-section="zones">
+      <span class="nav-icon">💧</span> Zones
+    </a>
+    <a href="#" class="nav-item" data-section="weather">
+      <span class="nav-icon">🌤</span> Weather
+    </a>
+    <a href="#" class="nav-item" data-section="sensors">
+      <span class="nav-icon">📡</span> Sensors
+    </a>
+    <a href="#" class="nav-item" data-section="settings">
+      <span class="nav-icon">⚙️</span> Settings
+    </a>
+    <a href="#" class="nav-item" data-section="notifications">
+      <span class="nav-icon">🔔</span> Alerts
+      <span class="badge" id="notif-badge" style="display:none">0</span>
+    </a>
+  </nav>
+
+  <div class="sidebar-bottom">
+    <!-- Mode pill -->
+    <div class="mode-pill" id="mode-pill">
+      <span id="mode-icon">🔧</span>
+      <span id="mode-label">Manual</span>
+    </div>
+    <!-- GPS status -->
+    <div class="gps-status" id="gps-status">
+      <span class="gps-dot" id="gps-dot"></span>
+      <span id="gps-text">GPS off</span>
+    </div>
+  </div>
+</aside>
+
+<!-- ══════════════════════════════════════════
+     MAIN CONTENT
+═══════════════════════════════════════════ -->
+<main class="main">
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <button class="hamburger" id="hamburger" aria-label="Toggle sidebar">☰</button>
+    <div class="topbar-title" id="page-title">Dashboard</div>
+    <div class="topbar-actions">
+      <div class="connection-dot" id="conn-dot" title="Disconnected"></div>
+      <button class="btn btn-sm btn-ghost" id="theme-btn" title="Toggle theme">🌙</button>
+    </div>
+  </header>
+
+  <!-- ── DASHBOARD ── -->
+  <section class="section active" id="section-dashboard">
+
+    <!-- Weather summary row -->
+    <div class="card-row">
+      <div class="card card-weather" id="card-weather">
+        <div class="card-icon">🌡️</div>
+        <div class="card-body">
+          <div class="card-label">Temperature</div>
+          <div class="card-value" id="temp-val">--°C</div>
+          <div class="card-sub" id="weather-desc">Loading…</div>
+        </div>
+      </div>
+      <div class="card" id="card-wind">
+        <div class="card-icon">💨</div>
+        <div class="card-body">
+          <div class="card-label">Wind Speed</div>
+          <div class="card-value" id="wind-val">-- km/h</div>
+          <div class="card-sub" id="wind-sub">--</div>
+        </div>
+      </div>
+      <div class="card" id="card-sunlight">
+        <div class="card-icon">☀️</div>
+        <div class="card-body">
+          <div class="card-label">UV Index</div>
+          <div class="card-value" id="uvi-val">--</div>
+          <div class="card-sub" id="uvi-sub">--</div>
+        </div>
+      </div>
+      <div class="card" id="card-tank">
+        <div class="card-icon">🪣</div>
+        <div class="card-body">
+          <div class="card-label">Water Tank</div>
+          <div class="card-value" id="tank-pct">--%</div>
+          <div class="card-sub" id="tank-litres">-- L</div>
+        </div>
+        <button class="refill-btn" id="refill-btn" title="Refill tank">↺</button>
+      </div>
+    </div>
+
+    <!-- Irrigation status banner with mode toggle -->
+    <div class="irrigation-banner" id="irrigation-banner">
+      <div class="banner-left">
+        <div class="banner-indicator" id="banner-indicator">
+          <div class="pulse-ring"></div>
+          <div class="pulse-dot"></div>
+        </div>
+        <div>
+          <div class="banner-title" id="banner-title">Evaluating…</div>
+          <div class="banner-sub" id="banner-sub">Collecting sensor data</div>
+        </div>
+      </div>
+      <div class="banner-right">
+        <!-- Mode toggle -->
+        <div class="mode-toggle-wrap">
+          <span class="mode-toggle-label" id="mode-toggle-left">Manual</span>
+          <label class="mode-toggle" title="Switch irrigation mode">
+            <input type="checkbox" id="mode-checkbox" />
+            <span class="mode-slider"></span>
+          </label>
+          <span class="mode-toggle-label" id="mode-toggle-right">Auto</span>
+        </div>
+        <div class="banner-zone-btns">
+          <button class="btn btn-sm btn-success" id="btn-all-on">All ON</button>
+          <button class="btn btn-sm btn-danger"  id="btn-all-off">All OFF</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Zone cards -->
+    <div class="zones-grid" id="zones-grid"></div>
+
+    <!-- Geofence card — GPS only -->
+    <div class="geo-card">
+      <div class="geo-icon">🗺️</div>
+      <div class="geo-body">
+        <div class="geo-title">Geofence</div>
+        <div class="geo-sub" id="geo-sub">Waiting for GPS…</div>
+        <div class="geo-coords" id="geo-coords">--</div>
+      </div>
+      <div class="geo-right">
+        <div class="geo-distance" id="geo-distance">-- mi</div>
+        <div class="geo-radius">/ 50 mi radius</div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ── ZONES ── -->
+  <section class="section" id="section-zones">
+    <h2 class="section-heading">Garden Zones</h2>
+    <div class="zones-detail-grid" id="zones-detail-grid"></div>
+  </section>
+
+  <!-- ── WEATHER ── -->
+  <section class="section" id="section-weather">
+    <h2 class="section-heading">Weather Details</h2>
+    <div class="weather-detail-grid" id="weather-detail-grid"></div>
+  </section>
+
+  <!-- ── SENSORS ── -->
+  <section class="section" id="section-sensors">
+    <h2 class="section-heading">Sensor Readings</h2>
+    <div class="sensor-grid" id="sensor-grid"></div>
+  </section>
+
+  <!-- ── SETTINGS ── -->
+  <section class="section" id="section-settings">
+    <h2 class="section-heading">Settings</h2>
+    <div class="settings-grid">
+
+      <!-- Irrigation Mode card -->
+      <div class="settings-card">
+        <div class="settings-card-title">💧 Irrigation Mode</div>
+        <p class="settings-desc">
+          Choose how the system decides when to irrigate. In <strong>Auto</strong> mode, irrigation runs on a smart schedule based on weather and soil data. In <strong>Manual</strong> mode, you control each zone yourself.
+        </p>
+        <div class="mode-option-row">
+          <div class="mode-option" id="opt-manual">
+            <div class="mode-option-icon">🔧</div>
+            <div class="mode-option-title">Manual</div>
+            <div class="mode-option-desc">You control each zone</div>
+          </div>
+          <label class="mode-toggle big">
+            <input type="checkbox" id="mode-checkbox-settings" />
+            <span class="mode-slider"></span>
+          </label>
+          <div class="mode-option" id="opt-auto">
+            <div class="mode-option-icon">🤖</div>
+            <div class="mode-option-title">Auto</div>
+            <div class="mode-option-desc">Smart schedule via weather &amp; GPS</div>
+          </div>
+        </div>
+        <div class="settings-note" id="mode-gps-note">
+          📍 When GPS is active, the system auto-switches: <strong>Auto</strong> when you're &gt;50 mi away, <strong>Manual</strong> when you're home. Toggling above overrides GPS.
+        </div>
+        <button class="btn btn-sm btn-outline" id="restore-gps-mode-btn" style="margin-top:10px">
+          ↺ Restore GPS-based switching
+        </button>
+      </div>
+
+      <!-- Location card -->
+      <div class="settings-card">
+        <div class="settings-card-title">📍 Garden Location</div>
+        <p class="settings-desc">
+          Your device GPS is used to detect when you leave or return home, automatically switching irrigation modes. Make sure location permission is granted in your browser.
+        </p>
+
+        <div class="loc-info-grid">
+          <div class="loc-info-row">
+            <span class="loc-info-key">GPS Status</span>
+            <span class="loc-info-val" id="sett-gps-status">Waiting…</span>
+          </div>
+          <div class="loc-info-row">
+            <span class="loc-info-key">Latitude</span>
+            <span class="loc-info-val" id="sett-lat">--</span>
+          </div>
+          <div class="loc-info-row">
+            <span class="loc-info-key">Longitude</span>
+            <span class="loc-info-val" id="sett-lon">--</span>
+          </div>
+          <div class="loc-info-row">
+            <span class="loc-info-key">Accuracy</span>
+            <span class="loc-info-val" id="sett-acc">--</span>
+          </div>
+          <div class="loc-info-row">
+            <span class="loc-info-key">Home set to</span>
+            <span class="loc-info-val" id="sett-home">Your configured garden location</span>
+          </div>
+          <div class="loc-info-row">
+            <span class="loc-info-key">Distance from home</span>
+            <span class="loc-info-val" id="sett-distance">--</span>
+          </div>
+        </div>
+
+        <div class="loc-btn-row">
+          <button class="btn btn-sm btn-primary" id="sett-gps-btn">📍 Enable GPS</button>
+          <button class="btn btn-sm btn-outline" id="sett-set-home-btn">🏡 Set Current as Home</button>
+        </div>
+        <div class="settings-note" style="margin-top:8px">
+          Tap <strong>Set Current as Home</strong> once GPS is active to update the 50-mile geofence origin to your current position.
+        </div>
+      </div>
+
+      <!-- Notifications card -->
+      <div class="settings-card">
+        <div class="settings-card-title">🔔 Push Notifications</div>
+        <p class="settings-desc">Allow browser notifications so Irrigate can alert you even when the tab is in the background.</p>
+        <div class="loc-info-grid">
+          <div class="loc-info-row">
+            <span class="loc-info-key">Permission</span>
+            <span class="loc-info-val" id="sett-notif-perm">--</span>
+          </div>
+        </div>
+        <button class="btn btn-sm btn-primary" id="sett-notif-btn" style="margin-top:12px">Enable Notifications</button>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── NOTIFICATIONS ── -->
+  <section class="section" id="section-notifications">
+    <div class="notif-header">
+      <h2 class="section-heading">Alerts &amp; Notifications</h2>
+      <button class="btn btn-sm btn-ghost" id="clear-notifs-btn">Clear all</button>
+    </div>
+    <div class="notif-list" id="notif-list">
+      <div class="notif-empty">No notifications yet</div>
+    </div>
+  </section>
+
+</main>
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- GPS permission modal -->
+<div class="modal-overlay hidden" id="gps-modal">
+  <div class="modal">
+    <div class="modal-icon">📍</div>
+    <h3>Enable GPS</h3>
+    <p>Irrigate uses your device GPS to automatically switch between <strong>Auto</strong> and <strong>Manual</strong> irrigation based on a 50-mile geofence around your home (configured using your GPS or postcode in Settings).</p>
+    <button class="btn btn-primary btn-full" id="gps-allow-btn">Allow Location</button>
+    <button class="btn btn-ghost btn-full" id="gps-skip-btn">Skip — use default location</button>
+  </div>
+</div>
+
+<script src="static/js/app.js"></script>
+</body>
+</html>
