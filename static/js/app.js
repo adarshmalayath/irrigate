@@ -127,7 +127,13 @@ function renderZoneCards() {
           <div class="drip"></div><div class="drip"></div><div class="drip"></div>
         </div>
       </div>`;
-    card.addEventListener("click", () => toggleZone(name, !isOn));
+    card.addEventListener("click", () => {
+      if (state.controller?.mode === "auto") {
+        showToast("🤖 Switch to Manual mode to control zones manually", "info");
+        return;
+      }
+      toggleZone(name, !isOn);
+    });
     grid.appendChild(card);
   }
 }
@@ -185,6 +191,13 @@ function renderMode() {
   const r = $("mode-toggle-right");
   if (l) l.classList.toggle("active", mode === "manual");
   if (r) r.classList.toggle("active", mode === "auto");
+
+  // All ON / All OFF — only usable in manual mode
+  const isManual = mode === "manual";
+  const allOn  = $("btn-all-on");
+  const allOff = $("btn-all-off");
+  if (allOn)  { allOn.disabled  = !isManual; allOn.title  = isManual ? "" : "Switch to Manual mode to control zones"; }
+  if (allOff) { allOff.disabled = !isManual; allOff.title = isManual ? "" : "Switch to Manual mode to control zones"; }
 
   // Restore-GPS button
   const restoreBtn = $("restore-gps-mode-btn");
