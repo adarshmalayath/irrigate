@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
+import requests
 
 from sensors import SensorHub
 from weather import WeatherService
@@ -39,6 +40,8 @@ _home_postcode = os.getenv("HOME_POSTCODE", "")
 _home_label    = os.getenv("HOME_LABEL", "My Garden")
 _weather_cache: dict = {}
 _lock = threading.Lock()
+_tick_start_lock = threading.Lock()
+_tick_started = False
 
 sensor_hub = SensorHub()
 controller = IrrigationController(zones=ZONES)
@@ -100,6 +103,15 @@ def _background_tick():
             print(f"[tick error] {exc}")
 
         time.sleep(3)
+
+
+def _start_background_tick_once():
+    """Start live updates once for this server process."""
+    global _tick_started
+    with _tick_start_lock:
+        if not _tick_started:
+            _tick_started = True
+            socketio.start_background_task(_background_tick)
 
 
 # ────────────────────────────────────────────────────
@@ -209,6 +221,9 @@ def on_connect():
         "controller": controller.get_status(),
         "server_time": datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z",
     })
+    # Gunicorn imports this module, so __main__ is not reached in production.
+    # Start the periodic sensor/controller updates when the first client connects.
+    _start_background_tick_once()
 
 
 @socketio.on("disconnect")
@@ -267,10 +282,6 @@ def on_set_mode(data):
 # ────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    # Start background tick thread
-    tick_thread = threading.Thread(target=_background_tick, daemon=True)
-    tick_thread.start()
-
     port = int(os.getenv("PORT", 5000))
     print(f"\n🌿 Irrigate — Smart Garden Irrigation System")
     print(f"   Running at http://localhost:{port}")

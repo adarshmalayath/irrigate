@@ -209,17 +209,26 @@ function renderMode() {
 /* ── Geo card ── */
 function renderGeoCard() {
   const dist = state.controller?.user_distance_miles;
+  const mode = state.controller?.mode || "manual";
 
   if (dist != null) {
     $("geo-distance").textContent = `${dist.toFixed(1)} mi`;
-    $("geo-distance").style.color = dist > 50 ? "var(--info)" : "var(--accent)";
-    $("geo-sub").textContent = dist > 50
-      ? `Away — Auto mode active (${dist.toFixed(1)} mi from home)`
-      : `You're home — Manual mode active`;
+
+    if (dist > 50) {
+      $("geo-distance").style.color = "var(--info)";
+      $("geo-sub").textContent = `Away — Auto mode active (${dist.toFixed(1)} mi from home)`;
+    } else {
+      $("geo-distance").style.color = "var(--accent)";
+      $("geo-sub").textContent = `You're home — ${mode === "auto" ? "Auto" : "Manual"} mode active`;
+
+      // ── KEY FIX: when GPS confirms you're home, automatically restore manual ──
+      if (mode === "auto") {
+        restoreGpsMode(true);   // clears lock → GPS sets mode to manual (silent)
+      }
+    }
   } else {
     $("geo-distance").textContent = "-- mi";
-    $("geo-sub").textContent = state.gpsActive
-      ? "Calculating distance…" : "GPS not yet active";
+    $("geo-sub").textContent = state.gpsActive ? "Calculating distance…" : "GPS not yet active";
   }
 
   if (state.gpsLat != null) {
@@ -379,10 +388,10 @@ function setMode(auto) {
   renderMode();
 }
 
-function restoreGpsMode() {
+function restoreGpsMode(silent = false) {
   state.modeLocked = false;
   socket.emit("set_mode", { use_gps: true });
-  showToast("📍 Mode control restored to GPS", "info");
+  if (!silent) showToast("📍 Mode control restored to GPS", "info");
   renderMode();
 }
 
