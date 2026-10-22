@@ -59,5 +59,5 @@ Irrigate/
 | Wind > 7 m/s | Skip (drift prevention) |
 | Temp > 30°C & 10am–4pm | Defer to cooler hours |
 | Tank < 10% | Emergency stop |
-| User > 50 mi from home | Switch to Auto mode |
-| User < 50 mi from home | Switch to Manual mode |
+| User > 1 mi from home | Switch to Auto mode |
+| User < 1 mi from home | Switch to Manual mode |

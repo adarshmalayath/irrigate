@@ -22,7 +22,7 @@ from typing import Dict, List, Optional, Tuple
 # ────────────────────────────────────────────────────
 #  Constants / Thresholds
 # ────────────────────────────────────────────────────
-GEOFENCE_RADIUS_MILES   = 50.0
+GEOFENCE_RADIUS_MILES   = 1.0
 SOIL_DRY_THRESHOLD      = 40.0    # auto-irrigate below this
 SOIL_STOP_THRESHOLD     = 70.0    # auto-stop above this
 SOIL_ALERT_LOW          = 25.0    # 🔔 alert: critically dry
