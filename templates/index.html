@@ -75,24 +75,80 @@
   <section class="section active" id="section-dashboard">
 
     <div class="watering-animation" id="watering-animation" aria-hidden="true">
-      <svg class="watering-animation-art" viewBox="0 0 180 78" focusable="false">
-        <g class="watering-can">
-          <path class="watering-can-body" d="M20 22h31a5 5 0 0 1 5 5v18H18V27a5 5 0 0 1 2-5Z" />
-          <path class="watering-can-handle" d="M25 22v-5a10 10 0 0 1 20 0v5" />
-          <path class="watering-can-spout" d="M56 29 71 35l-3 6-13-4" />
-          <circle class="watering-can-rim" cx="34" cy="22" r="3" />
+      <svg class="watering-animation-art" viewBox="0 0 300 176" focusable="false" role="img" aria-label="Animated potted plant on an aqua irrigation platform">
+        <defs>
+          <linearGradient id="watering-platform-side" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#149d8c" />
+            <stop offset="1" stop-color="#075d60" />
+          </linearGradient>
+          <radialGradient id="watering-platform-surface" cx="45%" cy="32%" r="75%">
+            <stop offset="0" stop-color="#42ffe0" />
+            <stop offset=".72" stop-color="#14ddc8" />
+            <stop offset="1" stop-color="#08a999" />
+          </radialGradient>
+          <linearGradient id="watering-pot-surface" x1="0" y1="0" x2="1" y2=".7">
+            <stop offset="0" stop-color="#e8a36a" />
+            <stop offset=".48" stop-color="#b9673c" />
+            <stop offset="1" stop-color="#773d2d" />
+          </linearGradient>
+          <linearGradient id="watering-leaf-surface" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#d8f442" />
+            <stop offset=".5" stop-color="#8cca32" />
+            <stop offset="1" stop-color="#398b43" />
+          </linearGradient>
+          <linearGradient id="watering-leaf-light" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#efff73" />
+            <stop offset="1" stop-color="#83c83d" />
+          </linearGradient>
+        </defs>
+        <ellipse class="watering-shadow" cx="150" cy="155" rx="121" ry="15" />
+        <g class="watering-platform">
+          <ellipse class="watering-platform-side" cx="150" cy="141" rx="114" ry="31" />
+          <ellipse class="watering-platform-top" cx="150" cy="126" rx="114" ry="31" />
+          <ellipse class="watering-platform-edge" cx="150" cy="126" rx="108" ry="27" />
+          <ellipse class="watering-platform-highlight" cx="150" cy="127" rx="82" ry="19" />
         </g>
-        <path class="water-stream" d="M70 40q12 6 21 13" />
-        <circle class="water-drop drop-one" cx="78" cy="46" r="2.4" />
-        <circle class="water-drop drop-two" cx="87" cy="53" r="2" />
-        <circle class="water-drop drop-three" cx="95" cy="58" r="1.7" />
+        <g class="watering-orbit">
+          <ellipse cx="150" cy="126" rx="96" ry="23" />
+          <circle class="watering-drop drop-one" cx="63" cy="120" r="2.2" />
+          <circle class="watering-drop drop-two" cx="228" cy="132" r="2.6" />
+        </g>
         <g class="watering-plant">
-          <path class="plant-stem" d="M119 59V34" />
-          <path class="plant-leaf leaf-left" d="M118 46c-13 0-17-9-15-16 9 1 16 5 15 16Z" />
-          <path class="plant-leaf leaf-right" d="M120 40c1-12 9-17 17-15 0 9-5 16-17 15Z" />
-          <path class="plant-leaf leaf-top" d="M119 35c-2-10 3-16 10-18 4 8 1 15-10 18Z" />
-          <path class="plant-pot" d="M108 59h23l-3 13h-17Z" />
-          <path class="plant-soil" d="M108 59h23" />
+          <g class="plant-leaf leaf-left">
+            <path class="leaf-fill" d="M148 65C127 45 96 37 68 45c8 24 34 37 65 28Z" />
+            <path class="leaf-vein" d="M145 67C120 56 97 48 74 47" />
+          </g>
+          <g class="plant-leaf leaf-right">
+            <path class="leaf-fill leaf-fill-light" d="M155 61c15-26 47-36 73-21-4 25-31 40-62 30Z" />
+            <path class="leaf-vein" d="M159 64c21-12 41-19 63-22" />
+          </g>
+          <g class="plant-leaf leaf-low">
+            <path class="leaf-fill" d="M146 81c-22-15-46-15-63 0 10 19 37 23 61 7Z" />
+            <path class="leaf-vein" d="M143 84c-19-7-36-9-53-3" />
+          </g>
+          <g class="plant-leaf leaf-top">
+            <path class="leaf-fill leaf-fill-light" d="M150 53c-22-20-20-42 1-52 21 15 26 36 3 55Z" />
+            <path class="leaf-vein" d="M151 51c1-18 1-31 0-45" />
+          </g>
+          <g class="plant-leaf leaf-right-low">
+            <path class="leaf-fill" d="M157 78c18-17 39-18 54-5-10 17-29 23-52 12Z" />
+            <path class="leaf-vein" d="M160 81c16-8 30-10 45-8" />
+          </g>
+          <path class="plant-stem" d="M150 98c0-19 0-33 1-49M148 97c-2-14-12-23-23-30M153 91c7-13 16-22 27-29" />
+          <path class="plant-pot" d="M116 96h68l-8 27c-15 10-37 10-52 0Z" />
+          <ellipse class="plant-pot-rim" cx="150" cy="96" rx="35" ry="10" />
+          <ellipse class="plant-soil" cx="150" cy="96" rx="28" ry="6.4" />
+          <path class="plant-pot-shine" d="M123 101l5 18" />
+        </g>
+        <g class="irrigation-spray">
+          <path d="M221 116q13-10 25-8M220 120q17-3 30 3M218 124q10 3 17 10" />
+          <circle class="watering-drop drop-three" cx="244" cy="105" r="1.8" />
+          <circle class="watering-drop drop-four" cx="250" cy="124" r="1.5" />
+          <circle class="watering-drop drop-five" cx="235" cy="139" r="1.7" />
+        </g>
+        <g class="irrigation-emitter">
+          <rect x="216" y="119" width="5" height="14" rx="2" />
+          <circle cx="218.5" cy="118" r="3" />
         </g>
       </svg>
       <span class="watering-animation-label" id="watering-animation-label">Watering garden</span>

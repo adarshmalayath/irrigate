@@ -163,30 +163,43 @@ body {
 /* ── Weather cards ── */
 .card-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
 .watering-animation {
-  display: none; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
-  width: clamp(220px, 25vw, 400px); max-width: 100%; height: clamp(150px, 25vh, 240px);
-  padding: 12px 20px 10px; border: 1px solid var(--border);
-  border-radius: 22px; background: linear-gradient(145deg, var(--surface), var(--accent-light));
-  box-shadow: var(--shadow); color: var(--text-muted);
+  display: none; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  align-self: center; margin-inline: auto; width: clamp(230px, 25vw, 400px); max-width: 100%; height: clamp(180px, 25vh, 240px);
+  padding: 10px 18px 8px; border: 1px solid var(--border); overflow: hidden;
+  border-radius: 24px; background: linear-gradient(145deg, var(--surface), var(--accent-light));
+  box-shadow: var(--shadow); color: var(--text-muted); text-align: center;
 }
 .watering-animation.active { display: flex; }
-.watering-animation-art { display: block; width: 100%; height: auto; max-height: 100%; overflow: visible; flex: 1 1 auto; min-height: 0; }
-.watering-animation-label { font-size: .78rem; font-weight: 600; color: var(--text); }
-.watering-can { transform-box: view-box; transform-origin: 44px 38px; animation: can-tip .95s ease-in-out infinite alternate; }
-.watering-can-body, .watering-can-spout { fill: var(--info-light); stroke: var(--info); stroke-width: 2; stroke-linejoin: round; }
-.watering-can-handle { fill: none; stroke: var(--info); stroke-width: 3; stroke-linecap: round; }
-.watering-can-rim { fill: var(--info); }
-.water-stream { fill: none; stroke: var(--info); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 3 4; opacity: .7; }
-.water-drop { fill: var(--info); animation: watering-drop .95s ease-in infinite; transform-box: fill-box; transform-origin: center; }
-.drop-two { animation-delay: .3s; }
-.drop-three { animation-delay: .6s; }
-.plant-stem { fill: none; stroke: var(--success); stroke-width: 3; stroke-linecap: round; }
-.plant-leaf { fill: var(--success); transform-box: fill-box; transform-origin: bottom center; }
-.leaf-left { animation: plant-leaf-sway 1.8s ease-in-out infinite alternate; }
-.leaf-right { animation: plant-leaf-sway 1.8s ease-in-out -.9s infinite alternate; }
-.leaf-top { fill: var(--accent); }
-.plant-pot { fill: var(--warning-light); stroke: var(--warning); stroke-width: 1.5; stroke-linejoin: round; }
-.plant-soil { fill: none; stroke: var(--text-muted); stroke-width: 1.5; }
+.watering-animation-art { display: block; width: 100%; height: 100%; overflow: visible; flex: 1 1 auto; min-height: 0; }
+.watering-animation-label { position: relative; z-index: 1; font-size: .78rem; font-weight: 600; color: var(--text); }
+.watering-shadow { fill: rgba(0, 0, 0, .28); }
+.watering-platform { transform-box: fill-box; transform-origin: center; animation: platform-float 3s ease-in-out infinite; }
+.watering-platform-side { fill: url(#watering-platform-side); stroke: #0b7775; stroke-width: 1; }
+.watering-platform-top { fill: url(#watering-platform-surface); stroke: #52ffdf; stroke-width: 1.2; }
+.watering-platform-edge { fill: none; stroke: rgba(216, 255, 248, .46); stroke-width: 1.2; }
+.watering-platform-highlight { fill: rgba(214, 255, 246, .15); animation: platform-glow 2.4s ease-in-out infinite alternate; }
+.watering-orbit { fill: none; stroke: rgba(192, 255, 247, .52); stroke-width: 1.2; stroke-dasharray: 2 8; transform-box: fill-box; transform-origin: center; animation: water-orbit-spin 12s linear infinite; }
+.watering-drop { fill: #b7fff6; transform-box: fill-box; transform-origin: center; animation: watering-drop 1.25s ease-in-out infinite; }
+.drop-two { animation-delay: -.4s; }
+.drop-three { animation-delay: -.8s; }
+.drop-four { animation-delay: -.2s; }
+.drop-five { animation-delay: -.6s; }
+.plant-stem { fill: none; stroke: #438d43; stroke-width: 3; stroke-linecap: round; }
+.plant-leaf { transform-box: fill-box; }
+.leaf-fill { fill: url(#watering-leaf-surface); stroke: #5caa45; stroke-width: .8; stroke-linejoin: round; }
+.leaf-fill-light { fill: url(#watering-leaf-light); }
+.leaf-vein { fill: none; stroke: rgba(235, 255, 157, .68); stroke-width: 1.1; stroke-linecap: round; }
+.leaf-left { transform-origin: 100% 90%; animation: plant-leaf-sway 2.8s ease-in-out infinite alternate; }
+.leaf-right { transform-origin: 0 90%; animation: plant-leaf-sway 3.1s ease-in-out -1.3s infinite alternate-reverse; }
+.leaf-low { transform-origin: 100% 85%; animation: plant-leaf-sway 2.5s ease-in-out -.7s infinite alternate; }
+.leaf-top { transform-origin: 50% 100%; animation: plant-leaf-sway 3.3s ease-in-out -1.6s infinite alternate; }
+.leaf-right-low { transform-origin: 0 80%; animation: plant-leaf-sway 2.7s ease-in-out -1s infinite alternate-reverse; }
+.plant-pot { fill: url(#watering-pot-surface); stroke: #e3a072; stroke-width: 1.2; stroke-linejoin: round; }
+.plant-pot-rim { fill: #c77b4c; stroke: #efb17f; stroke-width: 1.2; }
+.plant-soil { fill: #4a3026; stroke: #80543b; stroke-width: 1; }
+.plant-pot-shine { fill: none; stroke: rgba(255, 220, 184, .45); stroke-width: 2; stroke-linecap: round; }
+.irrigation-spray { fill: none; stroke: #a9fff5; stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: 2 5; animation: spray-flow 1s linear infinite; }
+.irrigation-emitter { fill: #163337; stroke: #88fff0; stroke-width: .8; }
 .card {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 18px 16px; display: flex; align-items: flex-start; gap: 12px;
@@ -502,12 +515,15 @@ body {
 @keyframes pop          { 0%{transform:scale(0)}70%{transform:scale(1.2)}100%{transform:scale(1)} }
 @keyframes wave-move    { 0%{transform:translateX(0) scaleY(1)}100%{transform:translateX(20px) scaleY(1.3)} }
 @keyframes geo-glow     { 0%,100%{opacity:.08;transform:scale(.98)}50%{opacity:.2;transform:scale(1.02)} }
-@keyframes can-tip      { from{transform:rotate(0)}to{transform:rotate(-8deg)} }
-@keyframes watering-drop{ 0%{opacity:0;transform:translateY(-3px) scale(.65)}35%{opacity:1}100%{opacity:0;transform:translateY(10px) scale(.45)} }
-@keyframes plant-leaf-sway { from{transform:rotate(-3deg)}to{transform:rotate(5deg)} }
+@keyframes platform-float { 0%,100%{transform:translateY(0)}50%{transform:translateY(-1.5px)} }
+@keyframes platform-glow { from{opacity:.1}to{opacity:.35} }
+@keyframes water-orbit-spin { to{transform:rotate(360deg)} }
+@keyframes spray-flow { to{stroke-dashoffset:-14;opacity:.45} }
+@keyframes watering-drop { 0%,100%{opacity:.25;transform:scale(.7)}50%{opacity:1;transform:scale(1.35)} }
+@keyframes plant-leaf-sway { from{transform:rotate(-3deg)}to{transform:rotate(4deg)} }
 
 @media (prefers-reduced-motion: reduce) {
-  .geo-radius-glow, .watering-can, .water-drop, .plant-leaf { animation: none !important; }
+  .geo-radius-glow, .watering-platform, .watering-orbit, .watering-drop, .irrigation-spray, .plant-leaf { animation: none !important; }
   .geo-radius-glow { opacity: .14; }
 }
 
@@ -519,7 +535,7 @@ body {
   .hamburger { display: block; }
   .section { padding: 16px; }
   .card-row { grid-template-columns: repeat(2, 1fr); }
-  .watering-animation { width: min(100%, 360px); height: 160px; align-self: center; }
+  .watering-animation { width: min(100%, 420px); height: 220px; }
   .zones-grid { grid-template-columns: repeat(2, 1fr); }
   .irrigation-banner { flex-direction: column; align-items: flex-start; }
   .banner-right { width: 100%; justify-content: space-between; }
@@ -528,7 +544,7 @@ body {
 }
 @media (max-width: 420px) {
   .card-row, .zones-grid { grid-template-columns: 1fr 1fr; }
-  .watering-animation { width: 100%; height: 148px; padding: 10px 16px 8px; }
+  .watering-animation { width: 100%; height: 190px; padding: 10px 16px 8px; }
   .zones-detail-grid, .weather-detail-grid, .sensor-grid, .settings-grid { grid-template-columns: 1fr; }
 }
 
