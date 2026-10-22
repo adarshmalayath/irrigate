@@ -162,6 +162,30 @@ body {
 
 /* ── Weather cards ── */
 .card-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
+.watering-animation {
+  display: none; align-items: center; gap: 10px; width: fit-content; max-width: 100%;
+  min-height: 58px; padding: 4px 14px 4px 8px; border: 1px solid var(--border);
+  border-radius: 30px; background: linear-gradient(110deg, var(--surface), var(--accent-light));
+  box-shadow: var(--shadow); color: var(--text-muted);
+}
+.watering-animation.active { display: flex; }
+.watering-animation-art { width: 108px; height: 48px; overflow: visible; flex: 0 0 auto; }
+.watering-animation-label { font-size: .78rem; font-weight: 600; color: var(--text); }
+.watering-can { transform-box: view-box; transform-origin: 44px 38px; animation: can-tip .95s ease-in-out infinite alternate; }
+.watering-can-body, .watering-can-spout { fill: var(--info-light); stroke: var(--info); stroke-width: 2; stroke-linejoin: round; }
+.watering-can-handle { fill: none; stroke: var(--info); stroke-width: 3; stroke-linecap: round; }
+.watering-can-rim { fill: var(--info); }
+.water-stream { fill: none; stroke: var(--info); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 3 4; opacity: .7; }
+.water-drop { fill: var(--info); animation: watering-drop .95s ease-in infinite; transform-box: fill-box; transform-origin: center; }
+.drop-two { animation-delay: .3s; }
+.drop-three { animation-delay: .6s; }
+.plant-stem { fill: none; stroke: var(--success); stroke-width: 3; stroke-linecap: round; }
+.plant-leaf { fill: var(--success); transform-box: fill-box; transform-origin: bottom center; }
+.leaf-left { animation: plant-leaf-sway 1.8s ease-in-out infinite alternate; }
+.leaf-right { animation: plant-leaf-sway 1.8s ease-in-out -.9s infinite alternate; }
+.leaf-top { fill: var(--accent); }
+.plant-pot { fill: var(--warning-light); stroke: var(--warning); stroke-width: 1.5; stroke-linejoin: round; }
+.plant-soil { fill: none; stroke: var(--text-muted); stroke-width: 1.5; }
 .card {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 18px 16px; display: flex; align-items: flex-start; gap: 12px;
@@ -286,10 +310,25 @@ body {
 /* ── Geofence card ── */
 .geo-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 18px 20px; display: flex; align-items: center; gap: 16px;
-  box-shadow: var(--shadow); flex-wrap: wrap;
+  padding: 14px 20px; display: flex; align-items: center; gap: 16px;
+  box-shadow: var(--shadow); flex-wrap: wrap; overflow: hidden;
 }
-.geo-icon { font-size: 2rem; flex-shrink: 0; }
+.geo-visual { width: 146px; flex: 0 0 146px; }
+.geo-visual svg { display: block; width: 100%; height: auto; overflow: visible; filter: drop-shadow(0 7px 7px rgba(0,0,0,.16)); }
+.geo-radius-glow { fill: none; stroke: var(--info); stroke-width: 8; opacity: .12; animation: geo-glow 2.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.geo-radius-ring { fill: none; stroke: var(--info); stroke-width: 1.5; stroke-dasharray: 4 4; opacity: .8; }
+.geo-platform-side { stroke: var(--border); stroke-width: 1; }
+.geo-platform-left { fill: var(--surface2); }
+.geo-platform-right { fill: var(--accent-light); }
+.geo-platform-top { fill: var(--info-light); stroke: var(--border); stroke-width: 1; }
+.geo-bed { fill: var(--accent-light); stroke: var(--success); stroke-width: 1; stroke-linejoin: round; }
+.geo-bed-inner { fill: var(--success); opacity: .72; }
+.geo-path { fill: var(--surface2); stroke: var(--border); stroke-width: 1; }
+.greenhouse-side, .greenhouse-front { fill: var(--info-light); fill-opacity: .85; stroke: var(--info); stroke-width: 1.2; }
+.greenhouse-roof { fill: var(--surface2); stroke: var(--info); stroke-width: 1.2; }
+.greenhouse-ridge { fill: none; stroke: var(--info); stroke-width: 1; opacity: .8; }
+.geo-pin circle:first-child, .geo-pin path { fill: var(--accent); }
+.geo-pin-core { fill: #fff; }
 .geo-body { flex: 1; min-width: 140px; }
 .geo-title  { font-weight: 600; font-size: .95rem; }
 .geo-sub    { font-size: .78rem; color: var(--text-muted); margin-top: 2px; }
@@ -461,6 +500,15 @@ body {
 @keyframes blink-border { 0%,100%{border-color:var(--danger)}50%{border-color:transparent} }
 @keyframes pop          { 0%{transform:scale(0)}70%{transform:scale(1.2)}100%{transform:scale(1)} }
 @keyframes wave-move    { 0%{transform:translateX(0) scaleY(1)}100%{transform:translateX(20px) scaleY(1.3)} }
+@keyframes geo-glow     { 0%,100%{opacity:.08;transform:scale(.98)}50%{opacity:.2;transform:scale(1.02)} }
+@keyframes can-tip      { from{transform:rotate(0)}to{transform:rotate(-8deg)} }
+@keyframes watering-drop{ 0%{opacity:0;transform:translateY(-3px) scale(.65)}35%{opacity:1}100%{opacity:0;transform:translateY(10px) scale(.45)} }
+@keyframes plant-leaf-sway { from{transform:rotate(-3deg)}to{transform:rotate(5deg)} }
+
+@media (prefers-reduced-motion: reduce) {
+  .geo-radius-glow, .watering-can, .water-drop, .plant-leaf { animation: none !important; }
+  .geo-radius-glow { opacity: .14; }
+}
 
 /* ── Responsive ── */
 @media (max-width: 768px) {

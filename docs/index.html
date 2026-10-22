@@ -75,6 +75,30 @@
   <!-- ── DASHBOARD ── -->
   <section class="section active" id="section-dashboard">
 
+    <div class="watering-animation" id="watering-animation" aria-hidden="true">
+      <svg class="watering-animation-art" viewBox="0 0 180 78" focusable="false">
+        <g class="watering-can">
+          <path class="watering-can-body" d="M20 22h31a5 5 0 0 1 5 5v18H18V27a5 5 0 0 1 2-5Z" />
+          <path class="watering-can-handle" d="M25 22v-5a10 10 0 0 1 20 0v5" />
+          <path class="watering-can-spout" d="M56 29 71 35l-3 6-13-4" />
+          <circle class="watering-can-rim" cx="34" cy="22" r="3" />
+        </g>
+        <path class="water-stream" d="M70 40q12 6 21 13" />
+        <circle class="water-drop drop-one" cx="78" cy="46" r="2.4" />
+        <circle class="water-drop drop-two" cx="87" cy="53" r="2" />
+        <circle class="water-drop drop-three" cx="95" cy="58" r="1.7" />
+        <g class="watering-plant">
+          <path class="plant-stem" d="M119 59V34" />
+          <path class="plant-leaf leaf-left" d="M118 46c-13 0-17-9-15-16 9 1 16 5 15 16Z" />
+          <path class="plant-leaf leaf-right" d="M120 40c1-12 9-17 17-15 0 9-5 16-17 15Z" />
+          <path class="plant-leaf leaf-top" d="M119 35c-2-10 3-16 10-18 4 8 1 15-10 18Z" />
+          <path class="plant-pot" d="M108 59h23l-3 13h-17Z" />
+          <path class="plant-soil" d="M108 59h23" />
+        </g>
+      </svg>
+      <span class="watering-animation-label" id="watering-animation-label">Watering garden</span>
+    </div>
+
     <!-- Weather summary row -->
     <div class="card-row">
       <div class="card card-weather" id="card-weather">
@@ -162,7 +186,31 @@
 
     <!-- Geofence card — GPS only -->
     <div class="geo-card">
-      <div class="geo-icon">🗺️</div>
+      <div class="geo-visual" aria-hidden="true">
+        <svg viewBox="0 0 190 132" focusable="false">
+          <ellipse class="geo-radius-glow" cx="95" cy="84" rx="83" ry="32" />
+          <ellipse class="geo-radius-ring" cx="95" cy="84" rx="83" ry="32" />
+          <polygon class="geo-platform-side geo-platform-left" points="22,65 95,102 95,116 22,79" />
+          <polygon class="geo-platform-side geo-platform-right" points="95,102 168,65 168,79 95,116" />
+          <polygon class="geo-platform-top" points="95,27 168,65 95,102 22,65" />
+          <polygon class="geo-bed" points="52,60 78,46 99,57 73,71" />
+          <polygon class="geo-bed-inner" points="58,59 78,49 93,57 73,67" />
+          <polygon class="geo-bed" points="94,79 120,65 145,78 119,92" />
+          <polygon class="geo-bed-inner" points="101,78 120,68 138,78 119,88" />
+          <path class="geo-path" d="m82 43 16-8 35 18-16 8Z" />
+          <g class="geo-greenhouse">
+            <path class="greenhouse-side" d="m111 39 17-9v19l-17 9Z" />
+            <path class="greenhouse-front" d="m95 31 16 8v19l-16-8Z" />
+            <path class="greenhouse-roof" d="m95 31 17-9 16 8-17 9Z" />
+            <path class="greenhouse-ridge" d="m112 22v26" />
+          </g>
+          <g class="geo-pin">
+            <circle cx="95" cy="26" r="9" />
+            <path d="M95 39 90 29h10Z" />
+            <circle class="geo-pin-core" cx="95" cy="26" r="3" />
+          </g>
+        </svg>
+      </div>
       <div class="geo-body">
         <div class="geo-title">Geofence</div>
         <div class="geo-sub" id="geo-sub">Waiting for GPS…</div>

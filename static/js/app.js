@@ -188,7 +188,18 @@ function renderZoneCards() {
 function renderBanner() {
   const d         = state.decision;
   const indicator = $("banner-indicator");
-  const active    = d?.zones || [];
+  const controllerActive = state.controller?.active_zones || [];
+  const active    = controllerActive.length ? controllerActive : (d?.zones || []);
+  const wateringAnimation = $("watering-animation");
+
+  if (wateringAnimation) {
+    const isIrrigating = active.length > 0;
+    wateringAnimation.classList.toggle("active", isIrrigating);
+    wateringAnimation.setAttribute("aria-hidden", String(!isIrrigating));
+    $("watering-animation-label").textContent = isIrrigating
+      ? `Watering ${active.join(" · ")}`
+      : "";
+  }
 
   if (active.length) {
     indicator.className  = "banner-indicator irrigating";
