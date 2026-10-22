@@ -99,12 +99,16 @@ function renderAll() {
 function renderWeatherCards() {
   const w = state.weather;
   const weatherAvailable = w.available !== false;
+  const humidityAvailable = weatherAvailable
+    && typeof w.humidity === "number" && Number.isFinite(w.humidity);
   const uvAvailable = w.uvi_available === true
     && typeof w.uvi === "number" && Number.isFinite(w.uvi);
   const precipitationAvailable = weatherAvailable && w.precipitation_available === true
     && typeof w.precipitation_mm_24h === "number" && Number.isFinite(w.precipitation_mm_24h);
   $("temp-val").textContent     = weatherAvailable ? `${w.temperature}°C` : "--°C";
   $("weather-desc").textContent = w.weather_desc;
+  $("humidity-val").textContent = humidityAvailable ? `${w.humidity}%` : "--%";
+  $("humidity-sub").textContent = humidityAvailable ? "Relative humidity" : "Unavailable";
   $("wind-val").textContent     = weatherAvailable ? `${w.wind_speed_kmh} km/h` : "-- km/h";
   $("wind-sub").textContent     = weatherAvailable ? (w.wind_speed > 7 ? "⚠️ High wind" : "Normal") : "Unavailable";
   $("uv-val").textContent        = uvAvailable ? Number(w.uvi).toFixed(1) : "--";
