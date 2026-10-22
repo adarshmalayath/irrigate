@@ -190,14 +190,33 @@
 
   <!-- ── SENSORS ── -->
   <section class="section" id="section-sensors">
-    <h2 class="section-heading">Sensor Readings</h2>
-    <div class="sensor-grid" id="sensor-grid"></div>
+    <h2 class="section-heading">All Sensor &amp; Location Readings</h2>
+    <div class="sensor-group">
+      <div class="sensor-group-heading">
+        <h3 class="sensor-group-title">Garden Weather Readings</h3>
+        <p class="sensor-group-note">Current conditions from OpenWeather, UV from Open-Meteo, and the 24-hour precipitation forecast for your garden.</p>
+      </div>
+      <div class="sensor-grid" id="weather-sensor-grid"></div>
+    </div>
+    <div class="sensor-group">
+      <div class="sensor-group-heading">
+        <h3 class="sensor-group-title">Water Tank Sensor</h3>
+      </div>
+      <div class="sensor-grid" id="sensor-grid"></div>
+    </div>
     <div class="sensor-group">
       <div class="sensor-group-heading">
         <h3 class="sensor-group-title">Soil Moisture Sensors</h3>
         <p class="sensor-group-note">Readings for each garden zone update live. Values are simulated until physical sensors are connected.</p>
       </div>
       <div class="sensor-grid" id="moisture-sensor-grid"></div>
+    </div>
+    <div class="sensor-group">
+      <div class="sensor-group-heading">
+        <h3 class="sensor-group-title">GPS &amp; Garden Location</h3>
+        <p class="sensor-group-note">Device coordinates use browser GPS permission; garden weather stays tied to the saved garden location.</p>
+      </div>
+      <div class="sensor-grid" id="gps-sensor-grid"></div>
     </div>
   </section>
 

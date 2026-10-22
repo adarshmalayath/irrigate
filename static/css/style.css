@@ -327,9 +327,12 @@ body {
 .weather-detail-grid,
 .sensor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
 .sensor-group { margin-top: 24px; }
+.section-heading + .sensor-group { margin-top: 0; }
 .sensor-group-heading { margin-bottom: 12px; }
 .sensor-group-title { margin: 0; font-size: 1rem; font-weight: 650; }
 .sensor-group-note { margin: 5px 0 0; color: var(--text-muted); font-size: .78rem; line-height: 1.5; }
+.sensor-reading-value { margin: 0 0 6px; font-size: 1.3rem; font-weight: 700; overflow-wrap: anywhere; }
+.sensor-reading-detail { color: var(--text-muted); font-size: .78rem; line-height: 1.45; overflow-wrap: anywhere; }
 .detail-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); }
 .detail-card-title { font-weight: 600; font-size: .9rem; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
 .detail-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: .83rem; }

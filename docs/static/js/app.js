@@ -67,10 +67,10 @@ socket.on("state_update", data => {
   if (data.sensors)    state.sensors    = data.sensors;
   if (data.controller) {
     state.controller = data.controller;
-    if (state.homeLat == null && data.controller.home_lat != null && data.controller.home_lon != null) {
+    if (data.controller.home_lat != null && data.controller.home_lon != null) {
       state.homeLat = data.controller.home_lat;
       state.homeLon = data.controller.home_lon;
-      state.homeLabel = data.controller.home_label || `Garden ${state.homeLat.toFixed(4)}, ${state.homeLon.toFixed(4)}`;
+      state.homeLabel = data.controller.home_label || state.weather?.city || `Garden ${Number(state.homeLat).toFixed(4)}, ${Number(state.homeLon).toFixed(4)}`;
     }
     // Sync mode-locked flag from server
     state.modeLocked = data.controller.mode_locked || false;
@@ -256,13 +256,14 @@ function renderMode() {
 function renderGeoCard() {
   const dist = state.controller?.user_distance_miles;
   const mode = state.controller?.mode || "manual";
+  const radius = Number(state.controller?.geofence_radius_miles) || 1;
 
   if (dist != null) {
     $("geo-distance").textContent = `${dist.toFixed(1)} mi`;
 
-    if (dist > 50) {
+    if (dist > radius) {
       $("geo-distance").style.color = "var(--info)";
-      $("geo-sub").textContent = `Away — Auto mode active (${dist.toFixed(1)} mi from home)`;
+      $("geo-sub").textContent = `Away — ${mode === "auto" ? "Auto" : "Manual"} mode active (${dist.toFixed(1)} mi from home)`;
     } else {
       $("geo-distance").style.color = "var(--accent)";
       $("geo-sub").textContent = `You're home — ${mode === "auto" ? "Auto" : "Manual"} mode active`;
@@ -302,9 +303,127 @@ function renderSettingsSection() {
 }
 
 /* ── Sensor section ── */
+function appendSensorReading(grid, icon, title, value, detail) {
+  const card = document.createElement("div");
+  card.className = "detail-card sensor-reading-card";
+
+  const heading = document.createElement("div");
+  heading.className = "detail-card-title";
+  heading.textContent = `${icon} ${title}`;
+
+  const reading = document.createElement("div");
+  reading.className = "sensor-reading-value";
+  reading.textContent = value;
+
+  const description = document.createElement("div");
+  description.className = "sensor-reading-detail";
+  description.textContent = detail;
+
+  card.append(heading, reading, description);
+  grid.appendChild(card);
+}
+
+function sensorNumber(value, suffix = "", digits = 1) {
+  if (value === null || value === undefined || value === "") return "Unavailable";
+  const number = Number(value);
+  return Number.isFinite(number) ? `${number.toFixed(digits)}${suffix}` : "Unavailable";
+}
+
+function renderWeatherSensorCards(grid) {
+  grid.innerHTML = "";
+  const weather = state.weather || {};
+  const available = weather.available === true;
+  const uviAvailable = available && weather.uvi_available === true;
+  const precipitationAvailable = available && weather.precipitation_available === true;
+
+  appendSensorReading(
+    grid, "🌡️", "Temperature",
+    available ? sensorNumber(weather.temperature, "°C") : "Unavailable",
+    available ? `Feels like ${sensorNumber(weather.feels_like, "°C")}` : (weather.error || "Garden weather unavailable")
+  );
+  appendSensorReading(
+    grid, "💧", "Air Humidity",
+    available ? sensorNumber(weather.humidity, "%", 0) : "Unavailable",
+    "Relative humidity"
+  );
+  appendSensorReading(
+    grid, "💨", "Wind Speed",
+    available ? sensorNumber(weather.wind_speed_kmh, " km/h") : "Unavailable",
+    available ? `${sensorNumber(weather.wind_speed, " m/s")} · ${weather.wind_speed > 7 ? "High wind" : "Normal"}` : "Current garden conditions"
+  );
+  appendSensorReading(
+    grid, "☀️", "UV Index",
+    uviAvailable ? sensorNumber(weather.uvi) : "Unavailable",
+    uviAvailable ? uvLabel(Number(weather.uvi)) : "Open-Meteo UV reading"
+  );
+  appendSensorReading(
+    grid, "☁️", "Cloud Cover",
+    available ? sensorNumber(weather.clouds, "%", 0) : "Unavailable",
+    "Cloud coverage over the garden"
+  );
+  appendSensorReading(
+    grid, "🌧️", "Precipitation Forecast",
+    precipitationAvailable ? sensorNumber(weather.precipitation_mm_24h, " mm") : "Unavailable",
+    precipitationAvailable ? "Forecast total for the next 24 hours" : "24-hour forecast unavailable"
+  );
+  appendSensorReading(
+    grid, "🌦️", "Rain Outlook",
+    available && typeof weather.rain_next_24h === "boolean"
+      ? (weather.rain_next_24h ? "Rain expected" : "No rain expected")
+      : "Unavailable",
+    "Next 24 hours"
+  );
+  appendSensorReading(
+    grid, "🧭", "Air Pressure",
+    available ? sensorNumber(weather.pressure, " hPa", 0) : "Unavailable",
+    "Sea-level pressure"
+  );
+  appendSensorReading(
+    grid, "🌤️", "Conditions",
+    available ? (weather.weather_desc || weather.weather_main || "Unavailable") : "Unavailable",
+    available ? `Garden location · ${weather.city || state.homeLabel}` : (weather.error || "Garden weather unavailable")
+  );
+}
+
+function renderGpsSensorCards(grid) {
+  grid.innerHTML = "";
+  const controller = state.controller || {};
+  const distance = controller.user_distance_miles;
+  const radius = controller.geofence_radius_miles ?? 1;
+  const deviceCoordinates = state.gpsLat != null && state.gpsLon != null
+    ? `${state.gpsLat.toFixed(5)}, ${state.gpsLon.toFixed(5)}`
+    : "Unavailable";
+  const homeCoordinates = controller.home_lat != null && controller.home_lon != null
+    ? `${Number(controller.home_lat).toFixed(5)}, ${Number(controller.home_lon).toFixed(5)}`
+    : "Not set";
+
+  appendSensorReading(
+    grid, "📡", "Device GPS",
+    state.gpsActive ? "Active" : "Off",
+    state.gpsActive ? "Browser location permission granted" : "Enable browser location to share device GPS"
+  );
+  appendSensorReading(
+    grid, "📍", "Device Coordinates",
+    deviceCoordinates,
+    state.gpsAcc != null ? `GPS accuracy ±${state.gpsAcc.toFixed(0)} m` : "Waiting for a GPS fix"
+  );
+  appendSensorReading(
+    grid, "🏡", "Garden Location",
+    state.homeLabel || "Garden location not set",
+    homeCoordinates
+  );
+  appendSensorReading(
+    grid, "🗺️", "Distance from Garden",
+    distance != null && Number.isFinite(Number(distance)) ? `${Number(distance).toFixed(2)} mi` : "Unavailable",
+    `${controller.mode || "manual"} mode · ${radius} mi geofence`
+  );
+}
+
 function renderSensorSection() {
   const grid = $("sensor-grid");
   const moistureGrid = $("moisture-sensor-grid");
+  renderWeatherSensorCards($("weather-sensor-grid"));
+  renderGpsSensorCards($("gps-sensor-grid"));
   const zones = state.sensors.zones;
   const tank  = state.sensors.tank;
   grid.innerHTML = "";
