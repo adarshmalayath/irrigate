@@ -1,20 +1,23 @@
-"""Coordinate-based weather data for the Irrigate dashboard."""
+"""Coordinate-based weather data from OpenWeather for the Irrigate dashboard."""
 
 import math
+import os
 import time
 from datetime import datetime, timezone
+
 import requests
 
 
-OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+OPENWEATHER_BASE = "https://api.openweathermap.org/data/2.5"
 CACHE_TTL_SECONDS = 600
 FAILURE_CACHE_TTL_SECONDS = 60
 
 
 class WeatherService:
-    """Fetch current and near-term weather for the supplied garden coordinates."""
+    """Fetch current conditions and a short forecast for the garden coordinates."""
 
-    def __init__(self):
+    def __init__(self, api_key: str | None = None):
+        self.api_key = (api_key or os.getenv("OPENWEATHER_API_KEY", "")).strip()
         self._cache: dict[tuple[float, float], tuple[float, dict]] = {}
 
     def invalidate(self) -> None:
@@ -35,7 +38,8 @@ class WeatherService:
             "wind_speed": None,
             "wind_speed_kmh": None,
             "clouds": None,
-            "uvi": None,
+            "uvi": 0.0,
+            "uvi_available": False,
             "sunlight_score": None,
             "weather_main": "Unavailable",
             "weather_desc": message,
@@ -54,7 +58,7 @@ class WeatherService:
         }
 
     def get_weather(self, lat: float, lon: float) -> dict:
-        """Fetch current conditions and the next 24 hours at this location."""
+        """Fetch current conditions and the next 24 hours for the given garden point."""
         try:
             lat, lon = float(lat), float(lon)
         except (TypeError, ValueError):
@@ -64,9 +68,11 @@ class WeatherService:
             return self._unavailable(0, 0, "Garden location is invalid")
         if lat == 0 and lon == 0:
             return self._unavailable(lat, lon, "Garden location not set")
+        if not self.api_key:
+            return self._unavailable(lat, lon, "OpenWeather API key is not configured")
 
-        # Weather grids do not change at GPS precision; rounding to about 1 km
-        # avoids repeat requests for tiny differences in saved coordinates.
+        # Cache by weather-grid location so small GPS precision changes don't
+        # consume another pair of API requests.
         location_key = (round(lat, 2), round(lon, 2))
         now = time.time()
         cached = self._cache.get(location_key)
@@ -74,38 +80,30 @@ class WeatherService:
             cached_at, cached_weather = cached
             ttl = CACHE_TTL_SECONDS if cached_weather.get("available") else FAILURE_CACHE_TTL_SECONDS
             if now - cached_at < ttl:
-                # Keep the exact device coordinates in the UI even when nearby
-                # devices share a weather-grid cache entry.
                 result = cached_weather.copy()
                 result["latitude"] = lat
                 result["longitude"] = lon
                 result["city"] = self._location_label(lat, lon)
                 return result
 
-        params = {
-            "latitude": lat,
-            "longitude": lon,
-            "current": ",".join((
-                "temperature_2m", "relative_humidity_2m", "apparent_temperature",
-                "precipitation", "rain", "showers", "snowfall", "weather_code",
-                "cloud_cover", "pressure_msl", "wind_speed_10m", "uv_index", "is_day",
-            )),
-            "hourly": "precipitation_probability,precipitation",
-            "daily": "sunrise,sunset",
-            "forecast_hours": 24,
-            "timezone": "auto",
-            "temperature_unit": "celsius",
-            "wind_speed_unit": "kmh",
-        }
-
+        params = {"lat": lat, "lon": lon, "appid": self.api_key, "units": "metric"}
         try:
-            response = requests.get(OPEN_METEO_URL, params=params, timeout=12)
-            response.raise_for_status()
-            payload = response.json()
-            result = self._parse(payload, lat, lon)
-        except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
-            # Never present generated demo values as real local weather.
-            result = self._unavailable(lat, lon, f"Weather service unavailable ({type(exc).__name__})")
+            current_response = requests.get(f"{OPENWEATHER_BASE}/weather", params=params, timeout=12)
+            self._raise_api_error(current_response)
+            forecast_response = requests.get(f"{OPENWEATHER_BASE}/forecast", params=params, timeout=12)
+            self._raise_api_error(forecast_response)
+            result = self._parse(current_response.json(), forecast_response.json(), lat, lon)
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            if status == 401:
+                message = "OpenWeather rejected the API key; check that it is valid and active"
+            elif status == 429:
+                message = "OpenWeather request limit reached"
+            else:
+                message = f"OpenWeather service error ({status or 'HTTP'})"
+            result = self._unavailable(lat, lon, message)
+        except (requests.RequestException, ValueError, KeyError, TypeError, IndexError) as exc:
+            result = self._unavailable(lat, lon, f"OpenWeather unavailable ({type(exc).__name__})")
 
         self._cache[location_key] = (now, result)
         if len(self._cache) > 128:
@@ -113,72 +111,67 @@ class WeatherService:
             del self._cache[oldest]
         return result
 
-    def _parse(self, payload: dict, lat: float, lon: float) -> dict:
-        current = payload["current"]
-        hourly = payload.get("hourly", {})
-        daily = payload.get("daily", {})
-        code = int(current.get("weather_code", 0))
-        main, description, icon = self._condition(code, bool(current.get("is_day", 1)))
-        wind_kmh = float(current.get("wind_speed_10m") or 0)
-        clouds = int(current.get("cloud_cover") or 0)
-        uvi = float(current.get("uv_index") or 0)
+    @staticmethod
+    def _raise_api_error(response) -> None:
+        response.raise_for_status()
+        payload = response.json()
+        if isinstance(payload, dict) and int(payload.get("cod", 200)) >= 400:
+            response.raise_for_status()
+            raise requests.HTTPError(f"OpenWeather API error {payload['cod']}", response=response)
 
-        current_time = current.get("time", "")
-        times = hourly.get("time", [])
-        probabilities = hourly.get("precipitation_probability", [])
-        precipitation = hourly.get("precipitation", [])
-        next_hours = [i for i, stamp in enumerate(times) if stamp >= current_time][:24]
+    def _parse(self, current_payload: dict, forecast_payload: dict, lat: float, lon: float) -> dict:
+        current = current_payload["main"]
+        conditions = current_payload["weather"][0]
+        wind = current_payload.get("wind", {})
+        clouds = int(current_payload.get("clouds", {}).get("all", 0))
+        wind_ms = float(wind.get("speed") or 0)
+        weather_main = conditions.get("main", "Unknown")
+        weather_id = int(conditions.get("id", 0))
+        current_rain = current_payload.get("rain", {})
+        current_snow = current_payload.get("snow", {})
+        is_rainy = weather_main in ("Rain", "Drizzle", "Thunderstorm", "Snow") or bool(current_rain or current_snow)
+
+        now_epoch = datetime.now(timezone.utc).timestamp()
+        next_24h = [
+            item for item in forecast_payload.get("list", [])
+            if now_epoch <= float(item.get("dt", 0)) <= now_epoch + 24 * 60 * 60
+        ]
         rain_next_24h = any(
-            (i < len(probabilities) and (probabilities[i] or 0) >= 50)
-            or (i < len(precipitation) and (precipitation[i] or 0) > 0.1)
-            for i in next_hours
+            float(item.get("pop", 0) or 0) >= 0.5
+            or float(item.get("rain", {}).get("3h", 0) or 0) > 0.1
+            or float(item.get("snow", {}).get("3h", 0) or 0) > 0.1
+            or item.get("weather", [{}])[0].get("main") in ("Rain", "Drizzle", "Thunderstorm", "Snow")
+            for item in next_24h
         )
 
-        sunrise = (daily.get("sunrise") or [None])[0]
-        sunset = (daily.get("sunset") or [None])[0]
-        timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        observed_at = datetime.fromtimestamp(
+            float(current_payload.get("dt", now_epoch)), timezone.utc
+        ).isoformat().replace("+00:00", "Z")
+        uvi = 0.0  # The current-weather and 5-day forecast endpoints don't include UV.
 
         return {
             "available": True,
-            "temperature": round(float(current["temperature_2m"]), 1),
-            "feels_like": round(float(current.get("apparent_temperature", current["temperature_2m"])), 1),
-            "humidity": int(current.get("relative_humidity_2m", 0)),
-            "wind_speed": round(wind_kmh / 3.6, 1),  # m/s for irrigation thresholds
-            "wind_speed_kmh": round(wind_kmh, 1),
+            "temperature": round(float(current["temp"]), 1),
+            "feels_like": round(float(current.get("feels_like", current["temp"])), 1),
+            "humidity": int(current.get("humidity", 0)),
+            "wind_speed": round(wind_ms, 1),
+            "wind_speed_kmh": round(wind_ms * 3.6, 1),
             "clouds": clouds,
-            "uvi": round(uvi, 1),
-            "sunlight_score": round(max(0.0, uvi * (1 - clouds / 100)), 2),
-            "weather_main": main,
-            "weather_desc": description,
-            "weather_icon": icon,
-            "is_rainy": main in ("Rain", "Drizzle", "Thunderstorm", "Snow"),
+            "uvi": uvi,
+            "uvi_available": False,
+            "sunlight_score": None,
+            "weather_main": weather_main,
+            "weather_desc": conditions.get("description", "").title(),
+            "weather_icon": conditions.get("icon", ""),
+            "is_rainy": is_rainy,
             "rain_next_24h": rain_next_24h,
-            "city": self._location_label(lat, lon),
-            "sunrise": sunrise,
-            "sunset": sunset,
-            "pressure": current.get("pressure_msl"),
-            "source": "open-meteo",
+            "city": current_payload.get("name") or self._location_label(lat, lon),
+            "sunrise": current_payload.get("sys", {}).get("sunrise"),
+            "sunset": current_payload.get("sys", {}).get("sunset"),
+            "pressure": current.get("pressure"),
+            "source": "openweathermap",
             "latitude": lat,
             "longitude": lon,
-            "timestamp": timestamp,
+            "timestamp": observed_at,
+            "weather_id": weather_id,
         }
-
-    @staticmethod
-    def _condition(code: int, is_day: bool) -> tuple[str, str, str]:
-        if code == 0:
-            return "Clear", "Clear sky", "01d" if is_day else "01n"
-        if code == 1:
-            return "Clear", "Mainly clear", "02d" if is_day else "02n"
-        if code in (2, 3):
-            return "Clouds", "Partly cloudy" if code == 2 else "Overcast", "03d"
-        if code in (45, 48):
-            return "Fog", "Fog", "50d"
-        if code in (51, 53, 55, 56, 57):
-            return "Drizzle", "Drizzle", "09d"
-        if code in (61, 63, 65, 66, 67, 80, 81, 82):
-            return "Rain", "Rain showers" if code >= 80 else "Rain", "10d"
-        if code in (71, 73, 75, 77, 85, 86):
-            return "Snow", "Snow", "13d"
-        if code in (95, 96, 99):
-            return "Thunderstorm", "Thunderstorm", "11d"
-        return "Clouds", "Variable conditions", "03d"

@@ -8,6 +8,8 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker --workers 1 --bind 0.0.0.0:$PORT --timeout 120
     envVars:
+      - key: OPENWEATHER_API_KEY
+        sync: false          # Set in Render dashboard → Environment
       - key: SECRET_KEY
         generateValue: true  # Render auto-generates a secure random value
       - key: HOME_LAT

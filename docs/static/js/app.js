@@ -96,12 +96,13 @@ function renderAll() {
 function renderWeatherCards() {
   const w = state.weather;
   const weatherAvailable = w.available !== false;
+  const uviAvailable = weatherAvailable && w.uvi_available !== false;
   $("temp-val").textContent     = weatherAvailable ? `${w.temperature}°C` : "--°C";
   $("weather-desc").textContent = w.weather_desc;
   $("wind-val").textContent     = weatherAvailable ? `${w.wind_speed_kmh} km/h` : "-- km/h";
   $("wind-sub").textContent     = weatherAvailable ? (w.wind_speed > 7 ? "⚠️ High wind" : "Normal") : "Unavailable";
-  $("uvi-val").textContent      = weatherAvailable ? w.uvi.toFixed(1) : "--";
-  $("uvi-sub").textContent      = weatherAvailable ? uviLabel(w.uvi) : "Unavailable";
+  $("uvi-val").textContent      = uviAvailable ? w.uvi.toFixed(1) : "--";
+  $("uvi-sub").textContent      = uviAvailable ? uviLabel(w.uvi) : (weatherAvailable ? "Not provided" : "Unavailable");
   $("card-wind").className      = "card " + (weatherAvailable && w.wind_speed > 7 ? "warn" : "");
 
   const tank = state.sensors?.tank;
@@ -362,6 +363,7 @@ function renderWeatherDetail() {
   const grid = $("weather-detail-grid");
   grid.innerHTML = "";
   const weatherAvailable = w.available !== false;
+  const uviAvailable = weatherAvailable && w.uvi_available !== false;
   const show = value => weatherAvailable ? value : "Unavailable";
 
   const sections = [
@@ -374,8 +376,8 @@ function renderWeatherDetail() {
     ["💨 Wind & Sky", [
       ["Wind speed",     weatherAvailable ? `${w.wind_speed_kmh} km/h` : "--"],
       ["Cloud cover",    weatherAvailable ? `${w.clouds}%` : "--"],
-      ["UV Index",       weatherAvailable ? `${w.uvi} — ${uviLabel(w.uvi)}` : "--"],
-      ["Sunlight score", weatherAvailable ? `${(w.sunlight_score * 10).toFixed(0)} / 100` : "--"],
+      ["UV Index",       uviAvailable ? `${w.uvi} — ${uviLabel(w.uvi)}` : "Not provided"],
+      ["Sunlight score", uviAvailable ? `${(w.sunlight_score * 10).toFixed(0)} / 100` : "Not provided"],
     ]],
     ["🌧️ Precipitation", [
       ["Condition",       show(w.weather_main)],
@@ -386,7 +388,7 @@ function renderWeatherDetail() {
     ["📍 Location", [
       ["Garden location", w.city],
       ["Coordinates", `${Number(w.latitude).toFixed(5)}, ${Number(w.longitude).toFixed(5)}`],
-      ["Data source", w.source === "open-meteo" ? "Open-Meteo forecast" : "Weather unavailable"],
+      ["Data source", w.source === "openweathermap" ? "OpenWeather" : "Weather unavailable"],
       ["Updated",     new Date(w.timestamp).toLocaleTimeString()],
     ]],
   ];

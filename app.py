@@ -315,5 +315,5 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     print(f"\n🌿 Irrigate — Smart Garden Irrigation System")
     print(f"   Running at http://localhost:{port}")
-    print("   Weather provider: Open-Meteo (GPS coordinates)\n")
+    print("   Weather provider: OpenWeather (garden coordinates)\n")
     socketio.run(app, host="0.0.0.0", port=port, debug=False, allow_unsafe_werkzeug=True)

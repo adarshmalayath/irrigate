@@ -3,7 +3,7 @@
 A responsive Python web application for intelligent home garden irrigation.
 
 ## Features
-- 🌡️ **Live weather** from Open-Meteo for the configured garden location (no API key required)
+- 🌡️ **Live weather** from OpenWeather for the configured garden location
 - 📡 **Mock sensors** for soil moisture (4 zones) and water tank level
 - 📍 **GPS geofencing** — device GPS tracks distance from the garden; weather stays at the garden
 - 🤖 **Smart decisions** — skips irrigation during rain, high wind, or midday heat
@@ -17,7 +17,9 @@ A responsive Python web application for intelligent home garden irrigation.
 # 1. Install dependencies
 pip3 install -r requirements.txt
 
-# 2. Run
+# 2. Add OPENWEATHER_API_KEY and your garden coordinates to .env
+
+# 3. Run
 PORT=5001 python3 app.py
 ```
 
@@ -38,7 +40,7 @@ The ready-to-publish static files are in `docs/`. In the repository's **Settings
 Irrigate/
 ├── app.py                  # Flask + SocketIO server
 ├── sensors.py              # Mock soil & tank sensors
-├── weather.py              # Coordinate-based Open-Meteo client
+├── weather.py              # Coordinate-based OpenWeather client
 ├── irrigation_controller.py # Decision engine + geofence
 ├── requirements.txt
 ├── .env                    # API keys (never commit!)
