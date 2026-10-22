@@ -24,7 +24,10 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "irrigate-dev-secret")
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="gevent")
+# The public Render service uses Socket.IO polling with a threaded Gunicorn
+# worker. Avoid gevent's late SSL monkey-patching, which can recurse inside
+# requests when the OpenWeather HTTPS endpoints are called.
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 # ─── Service singletons ─────────────────────────────
 weather_service = WeatherService()

@@ -3,6 +3,4 @@ flask-socketio>=5.3.7
 flask-cors>=4.0.1
 requests>=2.32.3
 python-dotenv>=1.0.1
-gevent>=24.2.1
-gevent-websocket>=0.10.1
-gunicorn[gevent]>=22.0.0
+gunicorn>=22.0.0
