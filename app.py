@@ -27,18 +27,21 @@ CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="gevent")
 
 # ─── Service singletons ─────────────────────────────
-OPENWEATHER_KEY = os.getenv("OPENWEATHER_API_KEY", "")
-weather_service = WeatherService(api_key=OPENWEATHER_KEY)
+weather_service = WeatherService()
 
 ZONES = ["Front Garden", "Back Garden", "Side Bed", "Greenhouse"]
 
 # Default location — loaded from environment variables only (never hardcoded)
 # Set HOME_LAT, HOME_LON, HOME_POSTCODE, HOME_LABEL in your .env or Render dashboard
-_current_lat   = float(os.getenv("HOME_LAT", 0.0))
-_current_lon   = float(os.getenv("HOME_LON", 0.0))
+def _env_coordinate(name):
+    value = os.getenv(name, "").strip()
+    return float(value) if value else None
+
+
+_home_lat      = _env_coordinate("HOME_LAT")
+_home_lon      = _env_coordinate("HOME_LON")
 _home_postcode = os.getenv("HOME_POSTCODE", "")
 _home_label    = os.getenv("HOME_LABEL", "My Garden")
-_weather_cache: dict = {}
 _lock = threading.Lock()
 _tick_start_lock = threading.Lock()
 _tick_started = False
@@ -46,9 +49,35 @@ _tick_started = False
 sensor_hub = SensorHub()
 controller = IrrigationController(zones=ZONES)
 
-# Pre-seed home location from .env so it's ready before any GPS fix arrives
-controller.set_home(_current_lat, _current_lon)
-print(f"   📍 Home: {_home_label} ({_home_postcode}) — {_current_lat}, {_current_lon}")
+
+def _controller_status():
+    status = controller.get_status()
+    status["home_label"] = _garden_label(_home_lat, _home_lon)
+    return status
+
+
+def _garden_label(lat, lon):
+    if _home_label and _home_label.strip().lower() not in {"garden", "my garden"}:
+        return _home_label
+    if lat is not None and lon is not None:
+        return f"Garden GPS {lat:.5f}, {lon:.5f}"
+    return "Garden location not set"
+
+
+def _get_garden_weather(lat, lon):
+    weather = weather_service.get_weather(lat, lon)
+    if lat is not None and lon is not None:
+        weather = weather.copy()
+        weather["city"] = _garden_label(lat, lon)
+    return weather
+
+# Garden weather and geofencing use the configured garden point. Device GPS is
+# tracked separately and only supplies the user's current position.
+if _home_lat is not None and _home_lon is not None:
+    controller.set_home(_home_lat, _home_lon)
+    print(f"   📍 Garden: {_home_label} ({_home_postcode}) — {_home_lat}, {_home_lon}")
+else:
+    print("   📍 Garden location not set; choose a postcode or set current GPS as home.")
 
 
 # ────────────────────────────────────────────────────
@@ -57,16 +86,16 @@ print(f"   📍 Home: {_home_label} ({_home_postcode}) — {_current_lat}, {_cur
 
 def _background_tick():
     """Runs every 3 seconds to update sensors, evaluate irrigation, push state."""
-    global _current_lat, _current_lon, _weather_cache
-
     while True:
         try:
             with _lock:
-                lat, lon = _current_lat, _current_lon
+                lat, lon = _home_lat, _home_lon
 
             # 1. Fetch weather (cached 10 min)
-            weather = weather_service.get_weather(lat, lon)
+            weather = _get_garden_weather(lat, lon)
             temp = weather.get("temperature", 20)
+            if temp is None:
+                temp = 20  # Keep simulated sensors ticking while real weather is unavailable.
 
             # 2. Update sensors
             active = controller.active_zones
@@ -80,7 +109,7 @@ def _background_tick():
             payload = {
                 "weather": weather,
                 "sensors": snap,
-                "controller": controller.get_status(),
+                "controller": _controller_status(),
                 "decision": {
                     "should_irrigate": decision.should_irrigate,
                     "zones": decision.zones_to_irrigate,
@@ -126,13 +155,13 @@ def index():
 @app.route("/api/status")
 def api_status():
     with _lock:
-        lat, lon = _current_lat, _current_lon
-    weather = weather_service.get_weather(lat, lon)
+        lat, lon = _home_lat, _home_lon
+    weather = _get_garden_weather(lat, lon)
     snap = sensor_hub.get_snapshot()
     return jsonify({
         "weather": weather,
         "sensors": snap,
-        "controller": controller.get_status(),
+        "controller": _controller_status(),
     })
 
 
@@ -173,9 +202,13 @@ def api_refill():
 
 @app.route("/api/set_home", methods=["POST"])
 def api_set_home():
+    global _home_lat, _home_lon, _home_label
     data = request.json or {}
-    lat = float(data.get("lat", _current_lat))
-    lon = float(data.get("lon", _current_lon))
+    lat = float(data.get("lat", _home_lat or 0))
+    lon = float(data.get("lon", _home_lon or 0))
+    label = data.get("label", f"{lat:.4f}, {lon:.4f}")
+    with _lock:
+        _home_lat, _home_lon, _home_label = lat, lon, label
     controller.set_home(lat, lon)
     return jsonify({"ok": True, "home_lat": lat, "home_lon": lon})
 
@@ -212,13 +245,13 @@ def on_connect():
     print(f"[WS] Client connected: {request.sid}")
     # Send current status immediately
     with _lock:
-        lat, lon = _current_lat, _current_lon
-    weather = weather_service.get_weather(lat, lon)
+        lat, lon = _home_lat, _home_lon
+    weather = _get_garden_weather(lat, lon)
     snap = sensor_hub.get_snapshot()
     emit("state_update", {
         "weather": weather,
         "sensors": snap,
-        "controller": controller.get_status(),
+        "controller": _controller_status(),
         "server_time": datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z",
     })
     # Gunicorn imports this module, so __main__ is not reached in production.
@@ -233,15 +266,11 @@ def on_disconnect():
 
 @socketio.on("location_update")
 def on_location(data):
-    global _current_lat, _current_lon
-    lat = float(data.get("lat", _current_lat))
-    lon = float(data.get("lon", _current_lon))
-    with _lock:
-        _current_lat = lat
-        _current_lon = lon
+    lat = float(data["lat"])
+    lon = float(data["lon"])
     controller.update_user_location(lat, lon)
-    # Invalidate weather cache so next tick fetches fresh data
-    weather_service._cache = None
+    # Device GPS is only used by the geofence; garden weather stays anchored to
+    # the separately configured home coordinates.
 
 
 @socketio.on("zone_toggle")
@@ -259,12 +288,13 @@ def on_all_zones_toggle(data):
 
 @socketio.on("set_home")
 def on_set_home(data):
-    lat = float(data.get("lat", _current_lat))
-    lon = float(data.get("lon", _current_lon))
+    global _home_lat, _home_lon, _home_label
+    lat = float(data.get("lat", _home_lat or 0))
+    lon = float(data.get("lon", _home_lon or 0))
     label = data.get("label", f"{lat:.4f}, {lon:.4f}")
+    with _lock:
+        _home_lat, _home_lon, _home_label = lat, lon, label
     controller.set_home(lat, lon)
-    # Invalidate weather cache for new location
-    weather_service._cache = None
 
 
 @socketio.on("set_mode")
@@ -285,5 +315,5 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     print(f"\n🌿 Irrigate — Smart Garden Irrigation System")
     print(f"   Running at http://localhost:{port}")
-    print(f"   OpenWeather key: {'✅ set' if OPENWEATHER_KEY else '⚠️  not set (using mock data)'}\n")
+    print("   Weather provider: Open-Meteo (GPS coordinates)\n")
     socketio.run(app, host="0.0.0.0", port=port, debug=False, allow_unsafe_werkzeug=True)

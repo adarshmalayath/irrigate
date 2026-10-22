@@ -4,6 +4,16 @@
 "use strict";
 
 // ─── State ───────────────────────────────────────
+let savedGarden = null;
+try {
+  const parsed = JSON.parse(localStorage.getItem("garden_location") || "null");
+  if (parsed && Number.isFinite(Number(parsed.lat)) && Number.isFinite(Number(parsed.lon))) {
+    savedGarden = { lat: Number(parsed.lat), lon: Number(parsed.lon), label: parsed.label || "Garden" };
+  }
+} catch (_) {
+  // Storage can be disabled by the browser; the server's configured garden remains usable.
+}
+
 const state = {
   weather:    null,
   sensors:    null,
@@ -15,9 +25,9 @@ const state = {
   gpsLat:     null,
   gpsLon:     null,
   gpsAcc:     null,
-  homeLat:    null,
-  homeLon:    null,
-  homeLabel:  "My Garden",
+  homeLat:    savedGarden?.lat ?? null,
+  homeLon:    savedGarden?.lon ?? null,
+  homeLabel:  savedGarden?.label ?? "Garden location not set",
   modeLocked: false,
 };
 
@@ -32,6 +42,14 @@ const socket = io(API_BASE, { transports: ["polling", "websocket"] });
 socket.on("connect", () => {
   state.connected = true;
   updateConnDot(true);
+  // GPS can arrive before the socket handshake finishes; replay the latest fix
+  // so the backend geofence receives the browser's current position.
+  if (state.gpsLat != null && state.gpsLon != null) {
+    socket.emit("location_update", { lat: state.gpsLat, lon: state.gpsLon });
+  }
+  if (savedGarden) {
+    socket.emit("set_home", savedGarden);
+  }
   showToast("🌿 Connected to Irrigate", "success");
 });
 
@@ -46,6 +64,11 @@ socket.on("state_update", data => {
   if (data.sensors)    state.sensors    = data.sensors;
   if (data.controller) {
     state.controller = data.controller;
+    if (state.homeLat == null && data.controller.home_lat != null && data.controller.home_lon != null) {
+      state.homeLat = data.controller.home_lat;
+      state.homeLon = data.controller.home_lon;
+      state.homeLabel = data.controller.home_label || `Garden ${state.homeLat.toFixed(4)}, ${state.homeLon.toFixed(4)}`;
+    }
     // Sync mode-locked flag from server
     state.modeLocked = data.controller.mode_locked || false;
   }
@@ -72,13 +95,14 @@ function renderAll() {
 /* ── Weather summary cards ── */
 function renderWeatherCards() {
   const w = state.weather;
-  $("temp-val").textContent    = `${w.temperature}°C`;
+  const weatherAvailable = w.available !== false;
+  $("temp-val").textContent     = weatherAvailable ? `${w.temperature}°C` : "--°C";
   $("weather-desc").textContent = w.weather_desc;
-  $("wind-val").textContent    = `${w.wind_speed_kmh} km/h`;
-  $("wind-sub").textContent    = w.wind_speed > 7 ? "⚠️ High wind" : "Normal";
-  $("uvi-val").textContent     = w.uvi.toFixed(1);
-  $("uvi-sub").textContent     = uviLabel(w.uvi);
-  $("card-wind").className     = "card " + (w.wind_speed > 7 ? "warn" : "");
+  $("wind-val").textContent     = weatherAvailable ? `${w.wind_speed_kmh} km/h` : "-- km/h";
+  $("wind-sub").textContent     = weatherAvailable ? (w.wind_speed > 7 ? "⚠️ High wind" : "Normal") : "Unavailable";
+  $("uvi-val").textContent      = weatherAvailable ? w.uvi.toFixed(1) : "--";
+  $("uvi-sub").textContent      = weatherAvailable ? uviLabel(w.uvi) : "Unavailable";
+  $("card-wind").className      = "card " + (weatherAvailable && w.wind_speed > 7 ? "warn" : "");
 
   const tank = state.sensors?.tank;
   if (tank) {
@@ -337,29 +361,32 @@ function renderWeatherDetail() {
   const w    = state.weather;
   const grid = $("weather-detail-grid");
   grid.innerHTML = "";
+  const weatherAvailable = w.available !== false;
+  const show = value => weatherAvailable ? value : "Unavailable";
 
   const sections = [
     ["🌡️ Temperature", [
-      ["Current",     `${w.temperature}°C`],
-      ["Feels like",  `${w.feels_like}°C`],
-      ["Humidity",    `${w.humidity}%`],
-      ["Pressure",    `${w.pressure} hPa`],
+      ["Current",     weatherAvailable ? `${w.temperature}°C` : "--"],
+      ["Feels like",  weatherAvailable ? `${w.feels_like}°C` : "--"],
+      ["Humidity",    weatherAvailable ? `${w.humidity}%` : "--"],
+      ["Pressure",    weatherAvailable ? `${w.pressure} hPa` : "--"],
     ]],
     ["💨 Wind & Sky", [
-      ["Wind speed",     `${w.wind_speed_kmh} km/h`],
-      ["Cloud cover",    `${w.clouds}%`],
-      ["UV Index",       `${w.uvi} — ${uviLabel(w.uvi)}`],
-      ["Sunlight score", `${(w.sunlight_score * 10).toFixed(0)} / 100`],
+      ["Wind speed",     weatherAvailable ? `${w.wind_speed_kmh} km/h` : "--"],
+      ["Cloud cover",    weatherAvailable ? `${w.clouds}%` : "--"],
+      ["UV Index",       weatherAvailable ? `${w.uvi} — ${uviLabel(w.uvi)}` : "--"],
+      ["Sunlight score", weatherAvailable ? `${(w.sunlight_score * 10).toFixed(0)} / 100` : "--"],
     ]],
     ["🌧️ Precipitation", [
-      ["Condition",       w.weather_main],
+      ["Condition",       show(w.weather_main)],
       ["Description",     w.weather_desc],
-      ["Currently raining", w.is_rainy ? "🌧️ Yes" : "No"],
-      ["Rain in 24h",     w.rain_next_24h ? "⚠️ Expected" : "No"],
+      ["Currently raining", weatherAvailable ? (w.is_rainy ? "🌧️ Yes" : "No") : "--"],
+      ["Rain in 24h",     weatherAvailable ? (w.rain_next_24h ? "⚠️ Expected" : "No") : "--"],
     ]],
     ["📍 Location", [
-      ["City",        w.city],
-      ["Data source", w.source === "mock" ? "🧪 Demo Mode" : "✅ OpenWeatherMap"],
+      ["Garden location", w.city],
+      ["Coordinates", `${Number(w.latitude).toFixed(5)}, ${Number(w.longitude).toFixed(5)}`],
+      ["Data source", w.source === "open-meteo" ? "Open-Meteo forecast" : "Weather unavailable"],
       ["Updated",     new Date(w.timestamp).toLocaleTimeString()],
     ]],
   ];
@@ -448,13 +475,13 @@ function setHomeLocation(lat, lon, label) {
   state.homeLat  = lat;
   state.homeLon  = lon;
   state.homeLabel = label;
+  savedGarden = { lat, lon, label };
+  try {
+    localStorage.setItem("garden_location", JSON.stringify(savedGarden));
+  } catch (_) {
+    showToast("Garden location is set for this visit, but the browser could not save it.", "warning");
+  }
   socket.emit("set_home", { lat, lon, label });
-  // Also update weather for new location
-  fetch(`${API_BASE}/api/set_home`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ lat, lon }),
-  });
   showToast(`🏡 Home set to ${label}`, "success");
   $("sett-home").textContent = label;
 }
@@ -469,7 +496,7 @@ function startGPS() {
     return;
   }
 
-  const opts = { enableHighAccuracy: true, maximumAge: 30000, timeout: 20000 };
+  const opts = { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 };
 
   function onPos(pos) {
     const { latitude: lat, longitude: lon, accuracy: acc } = pos.coords;
@@ -492,8 +519,10 @@ function startGPS() {
   }
 
   function onErr(err) {
+    state.gpsActive = false;
     setGPSStatus(false, "Unavailable");
-    showToast("📍 GPS unavailable — using configured home location", "warning");
+    showToast(`📍 Location unavailable: ${err.message || "check browser permission"}`, "warning");
+    renderSettingsSection();
   }
 
   // Use watchPosition for continuous tracking
@@ -742,6 +771,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // ── GPS buttons ──
   $("sett-gps-btn").addEventListener("click", () => {
     $("gps-modal").classList.add("hidden");
+    localStorage.setItem("gps_ok", "1");
     startGPS();
     requestNotifPermission();
   });
@@ -755,8 +785,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   $("gps-skip-btn").addEventListener("click", () => {
     $("gps-modal").classList.add("hidden");
-    localStorage.setItem("gps_ok", "skip");
-    showToast("📍 Using configured home location", "info");
+    showToast("📍 GPS is off for this visit. Enable it in Settings when ready.", "info");
   });
 
   // ── Notification permission button (settings) ──
@@ -764,11 +793,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // ── GPS modal on first load ──
   const gpsChoice = localStorage.getItem("gps_ok");
-  if (!gpsChoice) {
-    setTimeout(() => $("gps-modal").classList.remove("hidden"), 700);
-  } else if (gpsChoice === "1") {
+  if (gpsChoice === "1") {
     startGPS();
     requestNotifPermission();
+  } else {
+    // Older versions remembered "skip" forever. Ask again next visit so the
+    // user can opt into real GPS weather without finding the settings first.
+    setTimeout(() => $("gps-modal").classList.remove("hidden"), 700);
   }
 
   // Seed the home location from default postcode on first render

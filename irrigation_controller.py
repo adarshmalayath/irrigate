@@ -87,9 +87,9 @@ class IrrigationController:
     def update_user_location(self, lat: float, lon: float):
         self._user_lat = lat
         self._user_lon = lon
-        if self._home_lat is None:
-            self._home_lat = lat
-            self._home_lon = lon
+        if self._home_lat is None or self._home_lon is None:
+            self._user_distance_miles = None
+            return
 
         dist = haversine_miles(lat, lon, self._home_lat, self._home_lon)
         self._user_distance_miles = dist
@@ -112,6 +112,12 @@ class IrrigationController:
     def set_home(self, lat: float, lon: float):
         self._home_lat = lat
         self._home_lon = lon
+        if self._user_lat is not None and self._user_lon is not None:
+            self._user_distance_miles = haversine_miles(
+                self._user_lat, self._user_lon, self._home_lat, self._home_lon
+            )
+            if not self._mode_locked:
+                self._mode = "auto" if self._user_distance_miles > GEOFENCE_RADIUS_MILES else "manual"
 
     # ──────────────── Manual controls ────────────────
 
@@ -153,6 +159,17 @@ class IrrigationController:
             self._alert(
                 f"⚠️ Water tank is low ({tank_level:.0f}%) — please refill soon.",
                 "tank_low", "warning"
+            )
+
+        if weather.get("available") is False:
+            # Do not make an automatic watering decision using placeholder data.
+            if self._mode == "auto":
+                self._set_all_zones(False)
+            return IrrigationDecision(
+                should_irrigate=False, zones_to_irrigate=[],
+                reason="Weather data unavailable", mode=self._mode,
+                priority="none", skip_reason="Waiting for real weather data",
+                notifications=self._flush_notifications(),
             )
 
         # ── 2. WEATHER CHANGE ALERT ─────────────────────────────────────
