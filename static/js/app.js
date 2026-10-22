@@ -304,9 +304,11 @@ function renderSettingsSection() {
 /* ── Sensor section ── */
 function renderSensorSection() {
   const grid = $("sensor-grid");
+  const moistureGrid = $("moisture-sensor-grid");
   const zones = state.sensors.zones;
   const tank  = state.sensors.tank;
   grid.innerHTML = "";
+  moistureGrid.innerHTML = "";
 
   // Tank
   const tankCard = document.createElement("div");
@@ -330,7 +332,7 @@ function renderSensorSection() {
     const card = document.createElement("div");
     card.className = "detail-card";
     card.innerHTML = `
-      <div class="detail-card-title">🌱 ${name}</div>
+      <div class="detail-card-title">🌱 ${name} Moisture Sensor</div>
       <div class="progress-wrap" style="margin-bottom:6px">
         <div class="progress"><div class="progress-fill ${cl}" style="width:${data.moisture}%"></div></div>
         <div class="progress-pct">${data.moisture}%</div>
@@ -338,7 +340,7 @@ function renderSensorSection() {
       <div class="detail-row"><span class="detail-key">Status</span><span class="detail-val">${data.status}</span></div>
       <div class="detail-row"><span class="detail-key">Irrigating</span><span class="detail-val">${data.is_irrigating ? "✅ Yes" : "❌ No"}</span></div>
       <div class="detail-row"><span class="detail-key">Needs water</span><span class="detail-val">${data.needs_water ? "⚠️ Yes" : "✅ No"}</span></div>`;
-    grid.appendChild(card);
+    moistureGrid.appendChild(card);
   }
 }
 
