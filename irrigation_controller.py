@@ -12,6 +12,7 @@ Each alert has a 30-minute cooldown so there is zero spam.
 """
 
 import math
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -35,6 +36,7 @@ NIGHT_END_H             = 6
 
 ALERT_COOLDOWN_SECS     = 1800    # 30 minutes between repeat alerts
 WEATHER_TEMP_JUMP_C     = 5.0     # °C change that counts as "sudden"
+RAIN_MANUAL_RUN_SECS    = 10.0    # Seconds a user-requested manual run may continue in rain
 
 
 # ────────────────────────────────────────────────────
@@ -65,6 +67,11 @@ class IrrigationController:
         self._manual_overrides: Dict[str, bool] = {}
         self._mode: str = "manual"
         self._mode_locked: bool = False   # True = user pinned the mode, GPS won't override it
+        self._state_lock = threading.RLock()
+        self._is_raining = False
+        self._rain_manual_until: Optional[float] = None
+        self._rain_manual_timer: Optional[threading.Timer] = None
+        self._rain_manual_generation = 0
 
         # Location
         self._user_lat:  Optional[float] = None
@@ -85,58 +92,119 @@ class IrrigationController:
     # ──────────────── Location ────────────────
 
     def update_user_location(self, lat: float, lon: float):
-        self._user_lat = lat
-        self._user_lon = lon
-        if self._home_lat is None or self._home_lon is None:
-            self._user_distance_miles = None
-            return
+        with self._state_lock:
+            self._user_lat = lat
+            self._user_lon = lon
+            if self._home_lat is None or self._home_lon is None:
+                self._user_distance_miles = None
+                return
 
-        dist = haversine_miles(lat, lon, self._home_lat, self._home_lon)
-        self._user_distance_miles = dist
+            dist = haversine_miles(lat, lon, self._home_lat, self._home_lon)
+            self._user_distance_miles = dist
 
-        # GPS only auto-switches mode when the user hasn't manually pinned it
-        if not self._mode_locked:
-            self._mode = "auto" if dist > GEOFENCE_RADIUS_MILES else "manual"
+            # GPS only auto-switches mode when the user hasn't manually pinned it
+            if not self._mode_locked:
+                self._mode = "auto" if dist > GEOFENCE_RADIUS_MILES else "manual"
+                if self._mode == "auto":
+                    self._cancel_rain_manual_override()
 
     def set_mode(self, mode: str):
         """Manually pin the irrigation mode; GPS won't override until unlocked."""
         if mode not in ("auto", "manual"):
             return
-        self._mode = mode
-        self._mode_locked = True
+        with self._state_lock:
+            self._mode = mode
+            self._mode_locked = True
+            if mode != "manual":
+                self._cancel_rain_manual_override()
 
     def unlock_mode(self):
         """Release the manual pin so GPS distance decides mode again."""
-        self._mode_locked = False
+        with self._state_lock:
+            self._mode_locked = False
 
     def set_home(self, lat: float, lon: float):
-        self._home_lat = lat
-        self._home_lon = lon
-        if self._user_lat is not None and self._user_lon is not None:
-            self._user_distance_miles = haversine_miles(
-                self._user_lat, self._user_lon, self._home_lat, self._home_lon
-            )
-            if not self._mode_locked:
-                self._mode = "auto" if self._user_distance_miles > GEOFENCE_RADIUS_MILES else "manual"
+        with self._state_lock:
+            self._home_lat = lat
+            self._home_lon = lon
+            if self._user_lat is not None and self._user_lon is not None:
+                self._user_distance_miles = haversine_miles(
+                    self._user_lat, self._user_lon, self._home_lat, self._home_lon
+                )
+                if not self._mode_locked:
+                    self._mode = "auto" if self._user_distance_miles > GEOFENCE_RADIUS_MILES else "manual"
+                    if self._mode == "auto":
+                        self._cancel_rain_manual_override()
 
     # ──────────────── Manual controls ────────────────
 
     def toggle_zone(self, zone: str, on: bool) -> dict:
-        if zone not in self.zones:
-            return {"ok": False, "error": f"Zone '{zone}' not found"}
-        self._manual_overrides[zone] = on
-        self._zone_states[zone] = on
-        return {"ok": True, "zone": zone, "state": on}
+        with self._state_lock:
+            if zone not in self.zones:
+                return {"ok": False, "error": f"Zone '{zone}' not found"}
+            self._manual_overrides[zone] = on
+            self._zone_states[zone] = on
+            if on and self._mode == "manual" and self._is_raining:
+                self._start_rain_manual_override()
+            elif on or not any(self._zone_states.values()):
+                self._cancel_rain_manual_override()
+            return {"ok": True, "zone": zone, "state": on}
 
     def toggle_all_zones(self, on: bool):
-        for z in self.zones:
-            self._zone_states[z] = on
-            self._manual_overrides[z] = on
+        with self._state_lock:
+            for z in self.zones:
+                self._zone_states[z] = on
+                self._manual_overrides[z] = on
+            if on and self._mode == "manual" and self._is_raining:
+                self._start_rain_manual_override()
+            else:
+                self._cancel_rain_manual_override()
+
+    def _cancel_rain_manual_override(self):
+        with self._state_lock:
+            self._rain_manual_generation += 1
+            if self._rain_manual_timer is not None:
+                self._rain_manual_timer.cancel()
+            self._rain_manual_timer = None
+            self._rain_manual_until = None
+
+    def _start_rain_manual_override(self):
+        with self._state_lock:
+            self._cancel_rain_manual_override()
+            generation = self._rain_manual_generation
+            self._rain_manual_until = time.monotonic() + RAIN_MANUAL_RUN_SECS
+            timer = threading.Timer(
+                RAIN_MANUAL_RUN_SECS,
+                self._finish_rain_manual_override,
+                args=(generation,),
+            )
+            timer.daemon = True
+            self._rain_manual_timer = timer
+            timer.start()
+
+    def _finish_rain_manual_override(self, generation: int):
+        with self._state_lock:
+            if generation != self._rain_manual_generation:
+                return
+            for zone in self.zones:
+                self._zone_states[zone] = False
+                self._manual_overrides[zone] = False
+            self._rain_manual_timer = None
+            self._rain_manual_until = None
+            self._rain_manual_generation += 1
 
     # ──────────────── Decision engine ────────────────
 
     def evaluate(self, weather: dict, sensor_snapshot: dict) -> IrrigationDecision:
+        """Serialize decisions with manual controls and the rain-stop timer."""
+        with self._state_lock:
+            return self._evaluate_locked(weather, sensor_snapshot)
+
+    def _evaluate_locked(self, weather: dict, sensor_snapshot: dict) -> IrrigationDecision:
         """Main decision function — called every tick. Only raises the 3 alert types."""
+        if weather.get("available") is not False:
+            self._is_raining = bool(weather.get("is_rainy", False))
+
         zones_snapshot = sensor_snapshot.get("zones", {})
         tank           = sensor_snapshot.get("tank", {})
         tank_level     = tank.get("level", 100)
@@ -172,6 +240,9 @@ class IrrigationController:
                 notifications=self._flush_notifications(),
             )
 
+        if self._rain_manual_until is not None and time.monotonic() >= self._rain_manual_until:
+            self._set_all_zones(False)
+
         # ── 2. WEATHER CHANGE ALERT ─────────────────────────────────────
         self._check_weather_change(weather)
         self._prev_weather = weather
@@ -201,7 +272,13 @@ class IrrigationController:
         skip_wind = wind_ms  > HIGH_WIND_MS
         skip_heat = temp     > HOT_TEMP_C and 10 <= hour <= 16
 
-        if is_rainy:
+        rain_manual_run_active = (
+            self._mode == "manual"
+            and self._rain_manual_until is not None
+            and time.monotonic() < self._rain_manual_until
+            and bool(self.active_zones)
+        )
+        if is_rainy and not rain_manual_run_active:
             self._set_all_zones(False)
             return IrrigationDecision(
                 should_irrigate=False, zones_to_irrigate=[],
@@ -209,6 +286,19 @@ class IrrigationController:
                 priority="none", skip_reason="Rain detected",
                 notifications=self._flush_notifications(),
             )
+
+        if self._mode == "manual" and self._rain_manual_until is not None:
+            active_zones = self.active_zones
+            remaining = self._rain_manual_until - time.monotonic()
+            if active_zones and remaining > 0:
+                return IrrigationDecision(
+                    should_irrigate=True, zones_to_irrigate=active_zones,
+                    reason="Manual run with rain shutoff timer", mode=self._mode,
+                    priority="medium",
+                    skip_reason=f"Rain override: auto-stops in {math.ceil(remaining)}s",
+                    notifications=self._flush_notifications(),
+                )
+            self._set_all_zones(False)
 
         zones_to_water = []
         for zone, zdata in zones_snapshot.items():
@@ -314,6 +404,10 @@ class IrrigationController:
     def _set_all_zones(self, state: bool):
         for z in self.zones:
             self._zone_states[z] = state
+            if not state:
+                self._manual_overrides[z] = False
+        if not state:
+            self._cancel_rain_manual_override()
 
     def _build_reason(self, temp, wind_ms, uvi, is_rainy, rain_soon) -> str:
         parts = []
@@ -328,35 +422,41 @@ class IrrigationController:
 
     @property
     def zone_states(self) -> Dict[str, bool]:
-        return dict(self._zone_states)
+        with self._state_lock:
+            return dict(self._zone_states)
 
     @property
     def active_zones(self) -> List[str]:
-        return [z for z, on in self._zone_states.items() if on]
+        with self._state_lock:
+            return [z for z, on in self._zone_states.items() if on]
 
     @property
     def mode(self) -> str:
-        return self._mode
+        with self._state_lock:
+            return self._mode
 
     @property
     def user_distance_miles(self) -> Optional[float]:
-        return self._user_distance_miles
+        with self._state_lock:
+            return self._user_distance_miles
 
     @property
     def home_location(self) -> Tuple[Optional[float], Optional[float]]:
-        return (self._home_lat, self._home_lon)
+        with self._state_lock:
+            return (self._home_lat, self._home_lon)
 
     def get_status(self) -> dict:
-        return {
-            "mode":                  self._mode,
-            "mode_locked":           self._mode_locked,
-            "zone_states":           self.zone_states,
-            "active_zones":          self.active_zones,
-            "user_distance_miles":   self._user_distance_miles,
-            "geofence_radius_miles": GEOFENCE_RADIUS_MILES,
-            "home_lat":              self._home_lat,
-            "home_lon":              self._home_lon,
-        }
+        with self._state_lock:
+            return {
+                "mode":                  self._mode,
+                "mode_locked":           self._mode_locked,
+                "zone_states":           self.zone_states,
+                "active_zones":          self.active_zones,
+                "user_distance_miles":   self._user_distance_miles,
+                "geofence_radius_miles": GEOFENCE_RADIUS_MILES,
+                "home_lat":              self._home_lat,
+                "home_lon":              self._home_lon,
+            }
 
 
 # ────────────────────────────────────────────────────

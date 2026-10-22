@@ -193,7 +193,7 @@ function renderBanner() {
   if (active.length) {
     indicator.className  = "banner-indicator irrigating";
     $("banner-title").textContent = `Irrigating ${active.length} zone${active.length > 1 ? "s" : ""}`;
-    $("banner-sub").textContent   = active.join(", ");
+    $("banner-sub").textContent   = [active.join(", "), d?.skip_reason].filter(Boolean).join(" · ");
   } else if (d?.skip_reason) {
     indicator.className  = "banner-indicator";
     $("banner-title").textContent = "Irrigation paused";
