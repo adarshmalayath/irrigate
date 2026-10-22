@@ -46,6 +46,8 @@ class WeatherService:
             "weather_icon": "",
             "is_rainy": False,
             "rain_next_24h": False,
+            "precipitation_mm_24h": None,
+            "precipitation_available": False,
             "city": self._location_label(lat, lon),
             "sunrise": None,
             "sunset": None,
@@ -143,6 +145,11 @@ class WeatherService:
             or item.get("weather", [{}])[0].get("main") in ("Rain", "Drizzle", "Thunderstorm", "Snow")
             for item in next_24h
         )
+        precipitation_mm_24h = round(sum(
+            float(item.get("rain", {}).get("3h", 0) or 0)
+            + float(item.get("snow", {}).get("3h", 0) or 0)
+            for item in next_24h
+        ), 1)
 
         observed_at = datetime.fromtimestamp(
             float(current_payload.get("dt", now_epoch)), timezone.utc
@@ -165,6 +172,8 @@ class WeatherService:
             "weather_icon": conditions.get("icon", ""),
             "is_rainy": is_rainy,
             "rain_next_24h": rain_next_24h,
+            "precipitation_mm_24h": precipitation_mm_24h,
+            "precipitation_available": bool(next_24h),
             "city": current_payload.get("name") or self._location_label(lat, lon),
             "sunrise": current_payload.get("sys", {}).get("sunrise"),
             "sunset": current_payload.get("sys", {}).get("sunset"),

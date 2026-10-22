@@ -99,13 +99,14 @@ function renderAll() {
 function renderWeatherCards() {
   const w = state.weather;
   const weatherAvailable = w.available !== false;
-  const uviAvailable = weatherAvailable && w.uvi_available !== false;
+  const precipitationAvailable = weatherAvailable && w.precipitation_available === true
+    && typeof w.precipitation_mm_24h === "number" && Number.isFinite(w.precipitation_mm_24h);
   $("temp-val").textContent     = weatherAvailable ? `${w.temperature}°C` : "--°C";
   $("weather-desc").textContent = w.weather_desc;
   $("wind-val").textContent     = weatherAvailable ? `${w.wind_speed_kmh} km/h` : "-- km/h";
   $("wind-sub").textContent     = weatherAvailable ? (w.wind_speed > 7 ? "⚠️ High wind" : "Normal") : "Unavailable";
-  $("uvi-val").textContent      = uviAvailable ? w.uvi.toFixed(1) : "--";
-  $("uvi-sub").textContent      = uviAvailable ? uviLabel(w.uvi) : (weatherAvailable ? "Not provided" : "Unavailable");
+  $("precip-val").textContent   = precipitationAvailable ? `${Number(w.precipitation_mm_24h).toFixed(1)} mm` : "-- mm";
+  $("precip-sub").textContent   = precipitationAvailable ? "Next 24h forecast" : "Unavailable";
   $("card-wind").className      = "card " + (weatherAvailable && w.wind_speed > 7 ? "warn" : "");
 
   const tank = state.sensors?.tank;
@@ -366,7 +367,8 @@ function renderWeatherDetail() {
   const grid = $("weather-detail-grid");
   grid.innerHTML = "";
   const weatherAvailable = w.available !== false;
-  const uviAvailable = weatherAvailable && w.uvi_available !== false;
+  const precipitationAvailable = weatherAvailable && w.precipitation_available === true
+    && typeof w.precipitation_mm_24h === "number" && Number.isFinite(w.precipitation_mm_24h);
   const show = value => weatherAvailable ? value : "Unavailable";
 
   const sections = [
@@ -379,12 +381,11 @@ function renderWeatherDetail() {
     ["💨 Wind & Sky", [
       ["Wind speed",     weatherAvailable ? `${w.wind_speed_kmh} km/h` : "--"],
       ["Cloud cover",    weatherAvailable ? `${w.clouds}%` : "--"],
-      ["UV Index",       uviAvailable ? `${w.uvi} — ${uviLabel(w.uvi)}` : "Not provided"],
-      ["Sunlight score", uviAvailable ? `${(w.sunlight_score * 10).toFixed(0)} / 100` : "Not provided"],
     ]],
     ["🌧️ Precipitation", [
       ["Condition",       show(w.weather_main)],
       ["Description",     w.weather_desc],
+      ["Forecast next 24h", precipitationAvailable ? `${Number(w.precipitation_mm_24h).toFixed(1)} mm` : "Unavailable"],
       ["Currently raining", weatherAvailable ? (w.is_rainy ? "🌧️ Yes" : "No") : "--"],
       ["Rain in 24h",     weatherAvailable ? (w.rain_next_24h ? "⚠️ Expected" : "No") : "--"],
     ]],
@@ -656,15 +657,6 @@ function toggleTheme() {
 }
 
 // ─── Helpers ─────────────────────────────────────
-
-function uviLabel(v) {
-  if (v < 1) return "None";
-  if (v < 3) return "Low";
-  if (v < 6) return "Moderate";
-  if (v < 8) return "High";
-  if (v < 11) return "Very High";
-  return "Extreme";
-}
 
 function buildArc(pct) {
   const r = 30, c = 2 * Math.PI * r;
