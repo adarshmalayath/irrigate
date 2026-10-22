@@ -107,17 +107,10 @@ function renderWeatherCards() {
   $("weather-desc").textContent = w.weather_desc;
   $("wind-val").textContent     = weatherAvailable ? `${w.wind_speed_kmh} km/h` : "-- km/h";
   $("wind-sub").textContent     = weatherAvailable ? (w.wind_speed > 7 ? "⚠️ High wind" : "Normal") : "Unavailable";
-  if (uvAvailable) {
-    $("weather-extra-icon").textContent  = "☀️";
-    $("weather-extra-label").textContent = "UV Index";
-    $("weather-extra-val").textContent   = Number(w.uvi).toFixed(1);
-    $("weather-extra-sub").textContent   = uvLabel(Number(w.uvi));
-  } else {
-    $("weather-extra-icon").textContent  = "🌧️";
-    $("weather-extra-label").textContent = "Precipitation";
-    $("weather-extra-val").textContent   = precipitationAvailable ? `${Number(w.precipitation_mm_24h).toFixed(1)} mm` : "-- mm";
-    $("weather-extra-sub").textContent   = precipitationAvailable ? "Next 24h forecast" : "Unavailable";
-  }
+  $("uv-val").textContent        = uvAvailable ? Number(w.uvi).toFixed(1) : "--";
+  $("uv-sub").textContent        = uvAvailable ? uvLabel(Number(w.uvi)) : "Unavailable";
+  $("precip-val").textContent    = precipitationAvailable ? `${Number(w.precipitation_mm_24h).toFixed(1)} mm` : "-- mm";
+  $("precip-sub").textContent    = precipitationAvailable ? "Next 24h forecast" : "Unavailable";
   $("card-wind").className      = "card " + (weatherAvailable && w.wind_speed > 7 ? "warn" : "");
 
   const tank = state.sensors?.tank;
