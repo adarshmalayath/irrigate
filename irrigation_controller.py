@@ -37,6 +37,7 @@ NIGHT_END_H             = 6
 ALERT_COOLDOWN_SECS     = 1800    # 30 minutes between repeat alerts
 WEATHER_TEMP_JUMP_C     = 5.0     # °C change that counts as "sudden"
 RAIN_MANUAL_RUN_SECS    = 10.0    # Seconds a user-requested manual run may continue in rain
+AUTO_MODE_HOLD_SECS     = 3600.0  # Keep a user-selected Auto mode for one hour
 RAIN_SHELTERED_ZONES    = frozenset({"Side Bed", "Greenhouse"})
 
 
@@ -67,7 +68,8 @@ class IrrigationController:
         self._zone_states:   Dict[str, bool]  = {z: False for z in zones}
         self._manual_overrides: Dict[str, bool] = {}
         self._mode: str = "manual"
-        self._mode_locked: bool = False   # True = user pinned the mode, GPS won't override it
+        self._mode_locked: bool = False   # True = GPS won't override the user's mode choice
+        self._auto_mode_hold_until: Optional[float] = None
         self._state_lock = threading.RLock()
         self._is_raining = False
         self._rain_manual_until: Optional[float] = None
@@ -96,6 +98,7 @@ class IrrigationController:
         with self._state_lock:
             self._user_lat = lat
             self._user_lon = lon
+            self._expire_auto_mode_hold_locked()
             if self._home_lat is None or self._home_lon is None:
                 self._user_distance_miles = None
                 return
@@ -105,17 +108,18 @@ class IrrigationController:
 
             # GPS only auto-switches mode when the user hasn't manually pinned it
             if not self._mode_locked:
-                self._mode = "auto" if dist > GEOFENCE_RADIUS_MILES else "manual"
-                if self._mode == "auto":
-                    self._cancel_rain_manual_override()
+                self._apply_gps_mode_locked()
 
     def set_mode(self, mode: str):
-        """Manually pin the irrigation mode; GPS won't override until unlocked."""
+        """Pin Manual until GPS is restored; hold a user-selected Auto mode for one hour."""
         if mode not in ("auto", "manual"):
             return
         with self._state_lock:
             self._mode = mode
             self._mode_locked = True
+            self._auto_mode_hold_until = (
+                time.monotonic() + AUTO_MODE_HOLD_SECS if mode == "auto" else None
+            )
             if mode != "manual":
                 self._cancel_rain_manual_override()
 
@@ -123,6 +127,24 @@ class IrrigationController:
         """Release the manual pin so GPS distance decides mode again."""
         with self._state_lock:
             self._mode_locked = False
+            self._auto_mode_hold_until = None
+            self._apply_gps_mode_locked()
+
+    def _apply_gps_mode_locked(self):
+        """Set the mode from the latest known geofence distance (state lock held)."""
+        if self._user_distance_miles is None:
+            return
+        self._mode = "auto" if self._user_distance_miles > GEOFENCE_RADIUS_MILES else "manual"
+        if self._mode == "auto":
+            self._cancel_rain_manual_override()
+
+    def _expire_auto_mode_hold_locked(self):
+        """Let GPS control the mode again after a user-selected Auto hour."""
+        if self._auto_mode_hold_until is None or time.monotonic() < self._auto_mode_hold_until:
+            return
+        self._auto_mode_hold_until = None
+        self._mode_locked = False
+        self._apply_gps_mode_locked()
 
     def set_home(self, lat: float, lon: float):
         with self._state_lock:
@@ -132,10 +154,9 @@ class IrrigationController:
                 self._user_distance_miles = haversine_miles(
                     self._user_lat, self._user_lon, self._home_lat, self._home_lon
                 )
+                self._expire_auto_mode_hold_locked()
                 if not self._mode_locked:
-                    self._mode = "auto" if self._user_distance_miles > GEOFENCE_RADIUS_MILES else "manual"
-                    if self._mode == "auto":
-                        self._cancel_rain_manual_override()
+                    self._apply_gps_mode_locked()
 
     # ──────────────── Manual controls ────────────────
 
@@ -203,6 +224,7 @@ class IrrigationController:
 
     def _evaluate_locked(self, weather: dict, sensor_snapshot: dict) -> IrrigationDecision:
         """Main decision function — called every tick. Only raises the 3 alert types."""
+        self._expire_auto_mode_hold_locked()
         if weather.get("available") is not False:
             self._is_raining = bool(weather.get("is_rainy", False))
 
@@ -455,9 +477,15 @@ class IrrigationController:
 
     def get_status(self) -> dict:
         with self._state_lock:
+            self._expire_auto_mode_hold_locked()
+            hold_remaining = (
+                max(0, math.ceil(self._auto_mode_hold_until - time.monotonic()))
+                if self._auto_mode_hold_until is not None else 0
+            )
             return {
                 "mode":                  self._mode,
                 "mode_locked":           self._mode_locked,
+                "auto_mode_hold_seconds_remaining": hold_remaining,
                 "zone_states":           self.zone_states,
                 "active_zones":          self.active_zones,
                 "user_distance_miles":   self._user_distance_miles,

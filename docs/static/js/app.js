@@ -229,7 +229,8 @@ function renderMode() {
   if (mode === "auto") {
     pill.className        = "mode-pill auto";
     $("mode-icon").textContent  = "🤖";
-    $("mode-label").textContent = locked ? "Auto (pinned)" : "Auto";
+    const autoHold = Number(state.controller?.auto_mode_hold_seconds_remaining) || 0;
+    $("mode-label").textContent = autoHold > 0 ? "Auto (1h hold)" : (locked ? "Auto (pinned)" : "Auto");
   } else {
     pill.className        = "mode-pill";
     $("mode-icon").textContent  = "🔧";
@@ -280,12 +281,11 @@ function renderGeoCard() {
       $("geo-sub").textContent = `Away — ${mode === "auto" ? "Auto" : "Manual"} mode active (${dist.toFixed(1)} mi from home)`;
     } else {
       $("geo-distance").style.color = "var(--accent)";
-      $("geo-sub").textContent = `You're home — ${mode === "auto" ? "Auto" : "Manual"} mode active`;
-
-      // ── KEY FIX: when GPS confirms you're home, automatically restore manual ──
-      if (mode === "auto") {
-        restoreGpsMode(true);   // clears lock → GPS sets mode to manual (silent)
-      }
+      const hold = Number(state.controller?.auto_mode_hold_seconds_remaining) || 0;
+      const modeDescription = mode === "auto" && hold > 0
+        ? "Auto held for 1 hour"
+        : `${mode === "auto" ? "Auto" : "Manual"} mode active`;
+      $("geo-sub").textContent = `You're home — ${modeDescription}`;
     }
   } else {
     $("geo-distance").textContent = "-- mi";
