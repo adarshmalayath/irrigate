@@ -82,6 +82,7 @@ class WaterTankSensor:
     Simulates a 1000-litre tank.
     """
     CAPACITY_LITRES = 1000
+    AUTO_REFILL_THRESHOLD_PCT = 20.0
 
     def __init__(self, initial_level: float = None):
         self._level = initial_level if initial_level is not None else random.uniform(50, 90)
@@ -109,6 +110,13 @@ class WaterTankSensor:
     def refill(self, amount_pct: float = 100.0):
         """Manually refill the tank."""
         self._level = min(100.0, self._level + amount_pct)
+
+    def auto_refill_if_low(self) -> bool:
+        """Simulate an automatic full refill at or below the low-level threshold."""
+        if self._level <= self.AUTO_REFILL_THRESHOLD_PCT:
+            self._level = 100.0
+            return True
+        return False
 
     @property
     def level(self) -> float:

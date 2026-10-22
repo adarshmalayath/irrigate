@@ -103,6 +103,9 @@ def _background_tick():
             # 2. Update sensors
             active = controller.active_zones
             sensor_hub.update_all(temperature=temp, active_zones=active)
+            # The current tank is simulated; physical refill requires a connected
+            # pump/valve controller. Refill the model once it reaches 20%.
+            sensor_hub.tank.auto_refill_if_low()
             snap = sensor_hub.get_snapshot()
 
             # 3. Evaluate irrigation
