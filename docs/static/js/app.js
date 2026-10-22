@@ -99,14 +99,25 @@ function renderAll() {
 function renderWeatherCards() {
   const w = state.weather;
   const weatherAvailable = w.available !== false;
+  const uvAvailable = w.uvi_available === true
+    && typeof w.uvi === "number" && Number.isFinite(w.uvi);
   const precipitationAvailable = weatherAvailable && w.precipitation_available === true
     && typeof w.precipitation_mm_24h === "number" && Number.isFinite(w.precipitation_mm_24h);
   $("temp-val").textContent     = weatherAvailable ? `${w.temperature}°C` : "--°C";
   $("weather-desc").textContent = w.weather_desc;
   $("wind-val").textContent     = weatherAvailable ? `${w.wind_speed_kmh} km/h` : "-- km/h";
   $("wind-sub").textContent     = weatherAvailable ? (w.wind_speed > 7 ? "⚠️ High wind" : "Normal") : "Unavailable";
-  $("precip-val").textContent   = precipitationAvailable ? `${Number(w.precipitation_mm_24h).toFixed(1)} mm` : "-- mm";
-  $("precip-sub").textContent   = precipitationAvailable ? "Next 24h forecast" : "Unavailable";
+  if (uvAvailable) {
+    $("weather-extra-icon").textContent  = "☀️";
+    $("weather-extra-label").textContent = "UV Index";
+    $("weather-extra-val").textContent   = Number(w.uvi).toFixed(1);
+    $("weather-extra-sub").textContent   = uvLabel(Number(w.uvi));
+  } else {
+    $("weather-extra-icon").textContent  = "🌧️";
+    $("weather-extra-label").textContent = "Precipitation";
+    $("weather-extra-val").textContent   = precipitationAvailable ? `${Number(w.precipitation_mm_24h).toFixed(1)} mm` : "-- mm";
+    $("weather-extra-sub").textContent   = precipitationAvailable ? "Next 24h forecast" : "Unavailable";
+  }
   $("card-wind").className      = "card " + (weatherAvailable && w.wind_speed > 7 ? "warn" : "");
 
   const tank = state.sensors?.tank;
@@ -115,6 +126,14 @@ function renderWeatherCards() {
     $("tank-litres").textContent= `${tank.litres} L / ${tank.capacity} L`;
     $("card-tank").className    = "card " + (tank.level < 10 ? "danger" : tank.level < 25 ? "warn" : "");
   }
+}
+
+function uvLabel(value) {
+  if (value < 3) return "Low";
+  if (value < 6) return "Moderate";
+  if (value < 8) return "High";
+  if (value < 11) return "Very high";
+  return "Extreme";
 }
 
 /* ── Zone grid (dashboard) ── */
@@ -367,6 +386,8 @@ function renderWeatherDetail() {
   const grid = $("weather-detail-grid");
   grid.innerHTML = "";
   const weatherAvailable = w.available !== false;
+  const uvAvailable = w.uvi_available === true
+    && typeof w.uvi === "number" && Number.isFinite(w.uvi);
   const precipitationAvailable = weatherAvailable && w.precipitation_available === true
     && typeof w.precipitation_mm_24h === "number" && Number.isFinite(w.precipitation_mm_24h);
   const show = value => weatherAvailable ? value : "Unavailable";
@@ -382,7 +403,8 @@ function renderWeatherDetail() {
       ["Wind speed",     weatherAvailable ? `${w.wind_speed_kmh} km/h` : "--"],
       ["Cloud cover",    weatherAvailable ? `${w.clouds}%` : "--"],
     ]],
-    ["🌧️ Precipitation", [
+    ["☀️ UV & Precipitation", [
+      ["Current UV index", uvAvailable ? `${Number(w.uvi).toFixed(1)} (${uvLabel(Number(w.uvi))})` : "Unavailable"],
       ["Condition",       show(w.weather_main)],
       ["Description",     w.weather_desc],
       ["Forecast next 24h", precipitationAvailable ? `${Number(w.precipitation_mm_24h).toFixed(1)} mm` : "Unavailable"],
@@ -392,7 +414,8 @@ function renderWeatherDetail() {
     ["📍 Location", [
       ["Garden location", w.city],
       ["Coordinates", `${Number(w.latitude).toFixed(5)}, ${Number(w.longitude).toFixed(5)}`],
-      ["Data source", w.source === "openweathermap" ? "OpenWeather" : "Weather unavailable"],
+      ["Weather source", w.source === "openweathermap" ? "OpenWeather" : "Weather unavailable"],
+      ["UV data source", '<a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a> · CC BY 4.0'],
       ["Updated",     new Date(w.timestamp).toLocaleTimeString()],
     ]],
   ];

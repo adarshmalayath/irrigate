@@ -9,6 +9,7 @@ import requests
 
 
 OPENWEATHER_BASE = "https://api.openweathermap.org/data/2.5"
+OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 CACHE_TTL_SECONDS = 600
 FAILURE_CACHE_TTL_SECONDS = 60
 
@@ -38,8 +39,10 @@ class WeatherService:
             "wind_speed": None,
             "wind_speed_kmh": None,
             "clouds": None,
-            "uvi": 0.0,
+            "uvi": None,
             "uvi_available": False,
+            "uv_source": "open-meteo",
+            "uv_timestamp": None,
             "sunlight_score": None,
             "weather_main": "Unavailable",
             "weather_desc": message,
@@ -70,8 +73,6 @@ class WeatherService:
             return self._unavailable(0, 0, "Garden location is invalid")
         if lat == 0 and lon == 0:
             return self._unavailable(lat, lon, "Garden location not set")
-        if not self.api_key:
-            return self._unavailable(lat, lon, "OpenWeather API key is not configured")
 
         # Cache by weather-grid location so small GPS precision changes don't
         # consume another pair of API requests.
@@ -88,30 +89,65 @@ class WeatherService:
                 result["city"] = self._location_label(lat, lon)
                 return result
 
-        params = {"lat": lat, "lon": lon, "appid": self.api_key, "units": "metric"}
-        try:
-            current_response = requests.get(f"{OPENWEATHER_BASE}/weather", params=params, timeout=12)
-            self._raise_api_error(current_response)
-            forecast_response = requests.get(f"{OPENWEATHER_BASE}/forecast", params=params, timeout=12)
-            self._raise_api_error(forecast_response)
-            result = self._parse(current_response.json(), forecast_response.json(), lat, lon)
-        except requests.HTTPError as exc:
-            status = exc.response.status_code if exc.response is not None else None
-            if status == 401:
-                message = "OpenWeather rejected the API key; check that it is valid and active"
-            elif status == 429:
-                message = "OpenWeather request limit reached"
-            else:
-                message = f"OpenWeather service error ({status or 'HTTP'})"
-            result = self._unavailable(lat, lon, message)
-        except (requests.RequestException, ValueError, KeyError, TypeError, IndexError) as exc:
-            result = self._unavailable(lat, lon, f"OpenWeather unavailable ({type(exc).__name__})")
+        if not self.api_key:
+            result = self._unavailable(lat, lon, "OpenWeather API key is not configured")
+        else:
+            params = {"lat": lat, "lon": lon, "appid": self.api_key, "units": "metric"}
+            try:
+                current_response = requests.get(f"{OPENWEATHER_BASE}/weather", params=params, timeout=12)
+                self._raise_api_error(current_response)
+                forecast_response = requests.get(f"{OPENWEATHER_BASE}/forecast", params=params, timeout=12)
+                self._raise_api_error(forecast_response)
+                result = self._parse(current_response.json(), forecast_response.json(), lat, lon)
+            except requests.HTTPError as exc:
+                status = exc.response.status_code if exc.response is not None else None
+                if status == 401:
+                    message = "OpenWeather rejected the API key; check that it is valid and active"
+                elif status == 429:
+                    message = "OpenWeather request limit reached"
+                else:
+                    message = f"OpenWeather service error ({status or 'HTTP'})"
+                result = self._unavailable(lat, lon, message)
+            except (requests.RequestException, ValueError, KeyError, TypeError, IndexError) as exc:
+                result = self._unavailable(lat, lon, f"OpenWeather unavailable ({type(exc).__name__})")
 
+        # OpenWeather's current/5-day endpoints do not include UV. Fetch the
+        # garden's current model UV independently so a UV outage never breaks
+        # temperature, wind, or precipitation data.
+        result = self._attach_uv(result, lat, lon)
         self._cache[location_key] = (now, result)
         if len(self._cache) > 128:
             oldest = min(self._cache, key=lambda key: self._cache[key][0])
             del self._cache[oldest]
         return result
+
+    @staticmethod
+    def _attach_uv(weather: dict, lat: float, lon: float) -> dict:
+        """Attach the current UV index from Open-Meteo for this garden point."""
+        try:
+            response = requests.get(
+                OPEN_METEO_FORECAST_URL,
+                params={
+                    "latitude": lat,
+                    "longitude": lon,
+                    "current": "uv_index",
+                    "timezone": "auto",
+                },
+                timeout=8,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            current = payload.get("current", {}) if isinstance(payload, dict) else {}
+            raw_uvi = current.get("uv_index")
+            uvi = float(raw_uvi)
+            if math.isfinite(uvi) and uvi >= 0:
+                weather["uvi"] = round(uvi, 1)
+                weather["uvi_available"] = True
+                weather["uv_timestamp"] = current.get("time")
+        except (requests.RequestException, ValueError, TypeError, AttributeError):
+            # UV is supplemental: keep the primary weather response usable.
+            pass
+        return weather
 
     @staticmethod
     def _raise_api_error(response) -> None:
@@ -154,8 +190,6 @@ class WeatherService:
         observed_at = datetime.fromtimestamp(
             float(current_payload.get("dt", now_epoch)), timezone.utc
         ).isoformat().replace("+00:00", "Z")
-        uvi = 0.0  # The current-weather and 5-day forecast endpoints don't include UV.
-
         return {
             "available": True,
             "temperature": round(float(current["temp"]), 1),
@@ -164,8 +198,10 @@ class WeatherService:
             "wind_speed": round(wind_ms, 1),
             "wind_speed_kmh": round(wind_ms * 3.6, 1),
             "clouds": clouds,
-            "uvi": uvi,
+            "uvi": None,
             "uvi_available": False,
+            "uv_source": "open-meteo",
+            "uv_timestamp": None,
             "sunlight_score": None,
             "weather_main": weather_main,
             "weather_desc": conditions.get("description", "").title(),
