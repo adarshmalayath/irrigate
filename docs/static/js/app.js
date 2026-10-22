@@ -37,7 +37,10 @@ const $$ = sel => document.querySelectorAll(sel);
 
 // ─── Socket ──────────────────────────────────────
 const API_BASE = window.IRRIGATE_API_BASE || window.location.origin;
-const socket = io(API_BASE, { transports: ["polling", "websocket"] });
+// Render currently starts this service with the gevent worker, which supports
+// Socket.IO polling but not WebSocket upgrades. Stay on polling to avoid failed
+// upgrade requests and keep live state updates connected.
+const socket = io(API_BASE, { transports: ["polling"] });
 
 socket.on("connect", () => {
   state.connected = true;
