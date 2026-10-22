@@ -579,7 +579,7 @@ function setMode(auto) {
 
 function restoreGpsMode(silent = false) {
   state.modeLocked = false;
-  socket.emit("set_mode", { use_gps: true });
+  socket.emit("set_mode", { use_gps: true, force: true });
   if (!silent) showToast("📍 Mode control restored to GPS", "info");
   renderMode();
 }

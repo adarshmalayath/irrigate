@@ -123,9 +123,13 @@ class IrrigationController:
             if mode != "manual":
                 self._cancel_rain_manual_override()
 
-    def unlock_mode(self):
+    def unlock_mode(self, force: bool = False):
         """Release the manual pin so GPS distance decides mode again."""
         with self._state_lock:
+            if self._auto_mode_hold_until is not None:
+                if time.monotonic() < self._auto_mode_hold_until and not force:
+                    return
+                self._expire_auto_mode_hold_locked()
             self._mode_locked = False
             self._auto_mode_hold_until = None
             self._apply_gps_mode_locked()

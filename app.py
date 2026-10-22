@@ -177,7 +177,7 @@ def api_set_mode():
     mode = data.get("mode", "manual")
     use_gps = bool(data.get("use_gps", False))
     if use_gps:
-        controller.unlock_mode()
+        controller.unlock_mode(force=bool(data.get("force", False)))
     else:
         controller.set_mode(mode)
     return jsonify({"ok": True, "mode": controller.mode,
@@ -308,7 +308,7 @@ def on_set_mode(data):
     mode = data.get("mode", "manual")
     use_gps = bool(data.get("use_gps", False))
     if use_gps:
-        controller.unlock_mode()
+        controller.unlock_mode(force=bool(data.get("force", False)))
     else:
         controller.set_mode(mode)
 
