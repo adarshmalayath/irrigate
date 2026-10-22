@@ -37,6 +37,7 @@ NIGHT_END_H             = 6
 ALERT_COOLDOWN_SECS     = 1800    # 30 minutes between repeat alerts
 WEATHER_TEMP_JUMP_C     = 5.0     # °C change that counts as "sudden"
 RAIN_MANUAL_RUN_SECS    = 10.0    # Seconds a user-requested manual run may continue in rain
+RAIN_SHELTERED_ZONES    = frozenset({"Side Bed", "Greenhouse"})
 
 
 # ────────────────────────────────────────────────────
@@ -278,7 +279,7 @@ class IrrigationController:
             and time.monotonic() < self._rain_manual_until
             and bool(self.active_zones)
         )
-        if is_rainy and not rain_manual_run_active:
+        if is_rainy and not rain_manual_run_active and self._mode != "auto":
             self._set_all_zones(False)
             return IrrigationDecision(
                 should_irrigate=False, zones_to_irrigate=[],
@@ -314,7 +315,14 @@ class IrrigationController:
                 self._zone_states[zone] = False
                 continue
 
-            if rain_soon and moisture > 30:
+            # Rain does not reach the sheltered Side Bed or Greenhouse, so
+            # those zones may follow their soil readings during rain and in
+            # the forecast window. Exposed zones stay paused as before.
+            if is_rainy and zone not in RAIN_SHELTERED_ZONES:
+                self._zone_states[zone] = False
+                continue
+
+            if rain_soon and moisture > 30 and zone not in RAIN_SHELTERED_ZONES:
                 self._zone_states[zone] = False
                 continue
 
