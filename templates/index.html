@@ -36,10 +36,6 @@
     <a href="#" class="nav-item" data-section="settings">
       <span class="nav-icon">⚙️</span> Settings
     </a>
-    <a href="#" class="nav-item" data-section="notifications">
-      <span class="nav-icon">🔔</span> Alerts
-      <span class="badge" id="notif-badge" style="display:none">0</span>
-    </a>
   </nav>
 
   <div class="sidebar-bottom">
@@ -67,6 +63,10 @@
     <div class="topbar-title" id="page-title">Dashboard</div>
     <div class="topbar-actions">
       <div class="connection-dot" id="conn-dot" title="Disconnected"></div>
+      <button class="btn btn-sm btn-ghost topbar-alerts" id="alerts-btn" type="button" title="Open alerts" aria-label="Open alerts">
+        <span aria-hidden="true">🔔</span>
+        <span class="badge topbar-badge" id="notif-badge" style="display:none">0</span>
+      </button>
       <button class="btn btn-sm btn-ghost" id="theme-btn" title="Toggle theme">🌙</button>
     </div>
   </header>

@@ -601,6 +601,7 @@ function updateBadge() {
   const count = state.notifications.length;
   badge.style.display = count ? "inline-flex" : "none";
   badge.textContent   = count > 99 ? "99+" : count;
+  $("alerts-btn").setAttribute("aria-label", count ? `Open alerts, ${count} notifications` : "Open alerts");
 }
 
 // ─── Toast ───────────────────────────────────────
@@ -657,6 +658,7 @@ function navigate(section) {
   $$(".nav-item").forEach(el =>
     el.classList.toggle("active", el.dataset.section === section)
   );
+  $("alerts-btn").classList.toggle("active", section === "notifications");
   $$(".section").forEach(el =>
     el.classList.toggle("active", el.id === `section-${section}`)
   );
@@ -718,6 +720,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Theme toggle
   $("theme-btn").addEventListener("click", toggleTheme);
+  $("alerts-btn").addEventListener("click", () => navigate("notifications"));
 
   // Zone all-on / all-off
   $("btn-all-on").addEventListener("click",  () => toggleAllZones(true));

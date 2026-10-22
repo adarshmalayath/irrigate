@@ -150,6 +150,9 @@ body {
   background: var(--danger); transition: background .4s;
 }
 .connection-dot.connected { background: var(--success); animation: pulse-conn 2s infinite; }
+.topbar-alerts { position: relative; min-width: 36px; height: 36px; padding: 0 10px; font-size: 1rem; }
+.topbar-alerts.active { background: var(--accent-light); color: var(--accent); }
+.topbar-badge { position: absolute; top: -4px; right: -4px; margin: 0; min-width: 17px; height: 17px; padding: 0 3px; font-size: .65rem; }
 
 /* ── Sections ── */
 .section { display: none; padding: 24px; flex-direction: column; gap: 20px; animation: fadeIn .3s ease; }
