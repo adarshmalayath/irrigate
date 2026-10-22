@@ -72,6 +72,9 @@ socket.on("state_update", data => {
       state.homeLon = data.controller.home_lon;
       state.homeLabel = data.controller.home_label || state.weather?.city || `Garden ${Number(state.homeLat).toFixed(4)}, ${Number(state.homeLon).toFixed(4)}`;
     }
+    // If no saved or server-configured garden exists, use the first real GPS
+    // fix as the garden point so weather and geofencing have coordinates.
+    seedGardenFromGPS();
     // Sync mode-locked flag from server
     state.modeLocked = data.controller.mode_locked || false;
   }
@@ -648,6 +651,16 @@ function setHomeLocation(lat, lon, label) {
 
 let _gpsWatchId = null;
 
+function seedGardenFromGPS() {
+  if (!state.gpsActive || state.gpsLat == null || state.gpsLon == null) return false;
+  if (state.homeLat != null && state.homeLon != null) return false;
+  if (!state.controller || (state.controller.home_lat != null && state.controller.home_lon != null)) return false;
+
+  const label = `Garden GPS ${state.gpsLat.toFixed(4)}, ${state.gpsLon.toFixed(4)}`;
+  setHomeLocation(state.gpsLat, state.gpsLon, label);
+  return true;
+}
+
 function startGPS() {
   if (!navigator.geolocation) {
     setGPSStatus(false, "Not supported");
@@ -664,13 +677,10 @@ function startGPS() {
     state.gpsActive = true;
     setGPSStatus(true, `${lat.toFixed(4)}, ${lon.toFixed(4)}`);
 
-    // Send live position to server
+    // Set a real garden point on first use, while preserving any configured
+    // garden location. Emit the live fix afterward so distance is calculated.
+    seedGardenFromGPS();
     socket.emit("location_update", { lat, lon });
-
-    // On first fix, also seed home if not already set by postcode
-    if (!localStorage.getItem("home_set_by_postcode")) {
-      // Keep env-configured home; don't overwrite with GPS
-    }
 
     renderGeoCard();
     renderSettingsSection();
