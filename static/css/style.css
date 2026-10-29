@@ -568,6 +568,67 @@ body {
 .postcode-result.error   { color: var(--danger); }
 .postcode-result.loading { color: var(--text-muted); }
 
+/* ── Location tabs (Settings) ── */
+.loc-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--surface2);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  border: 1px solid var(--border);
+}
+.loc-tab {
+  flex: 1;
+  padding: 7px 10px;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: .78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+.loc-tab:hover  { color: var(--text); background: var(--surface); }
+.loc-tab.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
+
+.loc-tab-panel { display: none; flex-direction: column; gap: 8px; }
+.loc-tab-panel.active { display: flex; }
+
+.loc-input-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.loc-input {
+  flex: 1;
+  min-width: 120px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: .85rem;
+  outline: none;
+  transition: border-color var(--transition);
+}
+.loc-input:focus { border-color: var(--accent); }
+.loc-input[type="number"] { -moz-appearance: textfield; }
+.loc-input[type="number"]::-webkit-inner-spin-button { display: none; }
+
+.loc-feedback {
+  font-size: .78rem;
+  min-height: 18px;
+  font-weight: 500;
+  transition: color .3s;
+}
+.loc-feedback.ok      { color: var(--success); }
+.loc-feedback.error   { color: var(--danger); }
+.loc-feedback.loading { color: var(--text-muted); }
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

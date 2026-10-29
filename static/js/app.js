@@ -304,13 +304,19 @@ function renderGeoCard() {
 
 /* ── Settings section ── */
 function renderSettingsSection() {
-  // GPS fields
+  // Live GPS (user position)
   $("sett-gps-status").textContent = state.gpsActive ? "✅ Active" : "⏳ Waiting…";
   $("sett-gps-status").style.color = state.gpsActive ? "var(--success)" : "var(--text-muted)";
   $("sett-lat").textContent = state.gpsLat != null ? state.gpsLat.toFixed(6) : "--";
   $("sett-lon").textContent = state.gpsLon != null ? state.gpsLon.toFixed(6) : "--";
   $("sett-acc").textContent = state.gpsAcc != null ? `±${state.gpsAcc.toFixed(0)} m` : "--";
-  $("sett-home").textContent = state.homeLabel;
+
+  // Saved garden (home) location
+  $("sett-home").textContent = state.homeLabel || "Not set";
+  $("sett-home-lat").textContent = state.homeLat != null ? state.homeLat.toFixed(6) : "--";
+  $("sett-home-lon").textContent = state.homeLon != null ? state.homeLon.toFixed(6) : "--";
+
+  // Distance
   const dist = state.controller?.user_distance_miles;
   $("sett-distance").textContent = dist != null ? `${dist.toFixed(2)} mi` : "--";
 
@@ -896,48 +902,67 @@ document.addEventListener("DOMContentLoaded", () => {
     updateBadge();
   });
 
-  // ── Postcode input (Settings) ──
-  // Dynamically inject postcode row into settings location card
-  const locBtnRow = $("loc-btn-row");
-  if (locBtnRow) {
-    const wrap = document.createElement("div");
-    wrap.innerHTML = `
-      <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap;">
-        <input id="postcode-input" type="text" class="postcode-input"
-               placeholder="Enter your postcode" maxlength="8"
-               autocomplete="off" spellcheck="false"
-               style="flex:1;min-width:120px;" />
-        <button id="set-postcode-btn" class="btn btn-sm btn-outline">Set Garden 📍</button>
-      </div>
-      <div id="postcode-result" class="postcode-result" style="margin-top:4px"></div>`;
-    locBtnRow.after(wrap);
-
-    $("postcode-input").value = "";  // user enters their own postcode
-
-    $("set-postcode-btn").addEventListener("click", () => {
-      lookupPostcode($("postcode-input").value);
+  // ── Location tabs ──
+  $$(".loc-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      $$(".loc-tab").forEach(t => t.classList.remove("active"));
+      $$(".loc-tab-panel").forEach(p => p.classList.remove("active"));
+      tab.classList.add("active");
+      $(`tab-${tab.dataset.tab}`)?.classList.add("active");
     });
-    $("postcode-input").addEventListener("keydown", e => {
-      if (e.key === "Enter") lookupPostcode($("postcode-input").value);
-    });
-    $("postcode-input").addEventListener("input", e => {
-      e.target.value = e.target.value.toUpperCase();
-    });
-  }
+  });
 
-  // ── Set Current as Home (GPS) ──
+  // ── Tab: Postcode ──
+  $("postcode-input").addEventListener("input", e => {
+    e.target.value = e.target.value.toUpperCase();
+  });
+  $("postcode-input").addEventListener("keydown", e => {
+    if (e.key === "Enter") lookupPostcode($("postcode-input").value);
+  });
+  $("set-postcode-btn").addEventListener("click", () => {
+    lookupPostcode($("postcode-input").value);
+  });
+
+  // ── Tab: Lat / Lon ──
+  $("set-latlon-btn").addEventListener("click", () => {
+    const lat = parseFloat($("manual-lat").value);
+    const lon = parseFloat($("manual-lon").value);
+    const fb  = $("latlon-result");
+    if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      fb.className = "loc-feedback error";
+      fb.textContent = "❌ Enter valid latitude (−90 to 90) and longitude (−180 to 180)";
+      return;
+    }
+    fb.className = "loc-feedback loading";
+    fb.textContent = "Setting home…";
+    setHomeLocation(lat, lon, `${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+    fb.className = "loc-feedback ok";
+    fb.textContent = `✅ Home set to ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  });
+  // Allow Enter key in either lat/lon field
+  ["manual-lat", "manual-lon"].forEach(id => {
+    $(id).addEventListener("keydown", e => {
+      if (e.key === "Enter") $("set-latlon-btn").click();
+    });
+  });
+
+  // ── Tab: GPS — Set current position as home ──
   $("sett-set-home-btn").addEventListener("click", () => {
+    const fb = $("gps-home-result");
     if (state.gpsLat != null) {
-      setHomeLocation(state.gpsLat, state.gpsLon, `${state.gpsLat.toFixed(4)}, ${state.gpsLon.toFixed(4)}`);
-      localStorage.setItem("home_set_by_postcode", "1");
+      setHomeLocation(state.gpsLat, state.gpsLon,
+        `${state.gpsLat.toFixed(5)}, ${state.gpsLon.toFixed(5)}`);
+      fb.className = "loc-feedback ok";
+      fb.textContent = `✅ Home set to ${state.gpsLat.toFixed(5)}, ${state.gpsLon.toFixed(5)}`;
     } else {
-      showToast("📍 GPS not active yet — please enable location first", "warning");
+      fb.className = "loc-feedback error";
+      fb.textContent = "❌ GPS not active yet — enable it first";
+      showToast("📍 GPS not active yet — enable it first", "warning");
     }
   });
 
-  // ── GPS buttons ──
+  // ── GPS enable button (tab + modal) ──
   $("sett-gps-btn").addEventListener("click", () => {
-    $("gps-modal").classList.add("hidden");
     localStorage.setItem("gps_ok", "1");
     startGPS();
     requestNotifPermission();
@@ -952,10 +977,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   $("gps-skip-btn").addEventListener("click", () => {
     $("gps-modal").classList.add("hidden");
-    showToast("📍 GPS is off for this visit. Enable it in Settings when ready.", "info");
+    showToast("📍 GPS is off. Enable it anytime in Settings → Garden Location.", "info");
   });
 
-  // ── Notification permission button (settings) ──
+  // ── Notification permission ──
   $("sett-notif-btn").addEventListener("click", requestNotifPermission);
 
   // ── GPS modal on first load ──
@@ -964,11 +989,9 @@ document.addEventListener("DOMContentLoaded", () => {
     startGPS();
     requestNotifPermission();
   } else {
-    // Older versions remembered "skip" forever. Ask again next visit so the
-    // user can opt into real GPS weather without finding the settings first.
     setTimeout(() => $("gps-modal").classList.remove("hidden"), 700);
   }
 
-  // Seed the home location from default postcode on first render
-  $("sett-home").textContent = state.homeLabel;
+  // ── Restore GPS mode button ──
+  $("restore-gps-mode-btn").addEventListener("click", restoreGpsMode);
 });

@@ -362,29 +362,35 @@
       <div class="settings-card">
         <div class="settings-card-title">📍 Garden Location</div>
         <p class="settings-desc">
-          Your device GPS is used to detect when you leave or return home, automatically switching irrigation modes. Make sure location permission is granted in your browser.
+          Set where your garden is. This is used for weather data and the 50-mile geofence.
+          Your device GPS tracks <em>you</em> separately.
         </p>
 
+        <!-- Current home info -->
         <div class="loc-info-grid">
           <div class="loc-info-row">
-            <span class="loc-info-key">GPS Status</span>
+            <span class="loc-info-key">Home set to</span>
+            <span class="loc-info-val" id="sett-home">My Garden</span>
+          </div>
+          <div class="loc-info-row">
+            <span class="loc-info-key">Garden lat</span>
+            <span class="loc-info-val" id="sett-home-lat">--</span>
+          </div>
+          <div class="loc-info-row">
+            <span class="loc-info-key">Garden lon</span>
+            <span class="loc-info-val" id="sett-home-lon">--</span>
+          </div>
+          <div class="loc-info-row">
+            <span class="loc-info-key">Your GPS</span>
             <span class="loc-info-val" id="sett-gps-status">Waiting…</span>
           </div>
           <div class="loc-info-row">
-            <span class="loc-info-key">Latitude</span>
-            <span class="loc-info-val" id="sett-lat">--</span>
-          </div>
-          <div class="loc-info-row">
-            <span class="loc-info-key">Longitude</span>
-            <span class="loc-info-val" id="sett-lon">--</span>
+            <span class="loc-info-key">Your lat / lon</span>
+            <span class="loc-info-val"><span id="sett-lat">--</span> / <span id="sett-lon">--</span></span>
           </div>
           <div class="loc-info-row">
             <span class="loc-info-key">Accuracy</span>
             <span class="loc-info-val" id="sett-acc">--</span>
-          </div>
-          <div class="loc-info-row">
-            <span class="loc-info-key">Home set to</span>
-            <span class="loc-info-val" id="sett-home">Your configured garden location</span>
           </div>
           <div class="loc-info-row">
             <span class="loc-info-key">Distance from home</span>
@@ -392,12 +398,50 @@
           </div>
         </div>
 
-        <div class="loc-btn-row">
-          <button class="btn btn-sm btn-primary" id="sett-gps-btn">📍 Enable GPS</button>
-          <button class="btn btn-sm btn-outline" id="sett-set-home-btn">🏡 Set Current as Home</button>
+        <!-- Input method tabs -->
+        <div class="loc-tabs">
+          <button class="loc-tab active" data-tab="postcode">Postcode</button>
+          <button class="loc-tab" data-tab="latlon">Lat / Lon</button>
+          <button class="loc-tab" data-tab="gps">Use My GPS</button>
         </div>
-        <div class="settings-note" style="margin-top:8px">
-          Weather and geofencing use the saved garden location. If GPS is active while you are at the garden, tap <strong>Set Current as Home</strong>; otherwise, enter the garden postcode above.
+
+        <!-- Tab: Postcode -->
+        <div class="loc-tab-panel active" id="tab-postcode">
+          <div class="loc-input-row">
+            <input id="postcode-input" type="text" class="loc-input"
+                   placeholder="e.g. HA9 7QU" maxlength="8"
+                   autocomplete="off" spellcheck="false" />
+            <button class="btn btn-sm btn-primary" id="set-postcode-btn">Set 📍</button>
+          </div>
+          <div class="loc-feedback" id="postcode-result"></div>
+        </div>
+
+        <!-- Tab: Lat / Lon -->
+        <div class="loc-tab-panel" id="tab-latlon">
+          <div class="loc-input-row">
+            <input id="manual-lat" type="number" class="loc-input" step="0.000001"
+                   min="-90" max="90" placeholder="Latitude  e.g. 51.5603" />
+            <input id="manual-lon" type="number" class="loc-input" step="0.000001"
+                   min="-180" max="180" placeholder="Longitude  e.g. -0.2937" />
+            <button class="btn btn-sm btn-primary" id="set-latlon-btn">Set 📍</button>
+          </div>
+          <div class="loc-feedback" id="latlon-result"></div>
+        </div>
+
+        <!-- Tab: GPS -->
+        <div class="loc-tab-panel" id="tab-gps">
+          <p class="settings-desc" style="margin:0">
+            Tap the button while you are standing in your garden. Your current GPS position will become the home location.
+          </p>
+          <div class="loc-btn-row" style="margin-top:10px">
+            <button class="btn btn-sm btn-primary" id="sett-gps-btn">📍 Enable GPS</button>
+            <button class="btn btn-sm btn-outline" id="sett-set-home-btn">🏡 Set Current as Home</button>
+          </div>
+          <div class="loc-feedback" id="gps-home-result"></div>
+        </div>
+
+        <div class="settings-note">
+          Weather and geofencing use the saved garden location. Your moving GPS position is tracked separately to detect when you leave or return.
         </div>
       </div>
 
