@@ -286,6 +286,11 @@ function renderGeoCard() {
         ? "Auto held for 1 hour"
         : `${mode === "auto" ? "Auto" : "Manual"} mode active`;
       $("geo-sub").textContent = `You're home — ${modeDescription}`;
+
+      // Auto-fix: if GPS says you're home but toggle still shows Auto, silently restore manual
+      if (mode === "auto") {
+        restoreGpsMode(true);
+      }
     }
   } else {
     $("geo-distance").textContent = "-- mi";
