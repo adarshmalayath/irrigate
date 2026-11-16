@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🌿 Irrigate — Smart Garden</title>
-  <link rel="stylesheet" href="static/css/style.css?v=profile-1" />
+  <link rel="stylesheet" href="static/css/style.css?v=account-actions-1" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <script>window.IRRIGATE_API_BASE = "https://irrigate-v3dw.onrender.com";</script>
@@ -109,6 +109,7 @@
       <span class="gps-dot" id="gps-dot"></span>
       <span id="gps-text">GPS off</span>
     </div>
+    <button class="sidebar-logout-btn" id="sidebar-logout-btn" type="button"><span aria-hidden="true">↪</span> Log out</button>
   </div>
 </aside>
 
@@ -128,7 +129,7 @@
         <span aria-hidden="true">🔔</span>
         <span class="badge topbar-badge" id="notif-badge" style="display:none">0</span>
       </button>
-      <button class="btn btn-sm btn-ghost account-menu-btn" id="logout-btn" type="button" title="Log out"><span id="account-avatar">A</span><span class="logout-label">Log out</span></button>
+      <button class="btn btn-sm btn-ghost account-menu-btn" id="profile-btn" type="button" title="My Profile" aria-label="Open My Profile"><span id="account-avatar">A</span></button>
       <button class="btn btn-sm btn-ghost" id="theme-btn" title="Toggle theme">🌙</button>
     </div>
   </header>
@@ -572,6 +573,6 @@
   </div>
 </div>
 
-<script src="static/js/app.js?v=profile-1"></script>
+<script src="static/js/app.js?v=account-actions-1"></script>
 </body>
 </html>

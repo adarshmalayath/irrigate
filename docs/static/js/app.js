@@ -1211,7 +1211,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("auth-form").addEventListener("submit", submitAccount);
   $("onboarding-form").addEventListener("submit", submitOnboarding);
   $("add-onboarding-garden").addEventListener("click", () => addOnboardingGarden());
-  $("logout-btn").addEventListener("click", logout);
+  $("profile-btn").addEventListener("click", () => navigate("profile"));
+  $("sidebar-logout-btn").addEventListener("click", logout);
   $("profile-logout-btn").addEventListener("click", logout);
   $("active-garden-select").addEventListener("change", event => changeActiveGarden(event.target.value));
 

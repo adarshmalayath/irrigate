@@ -717,6 +717,10 @@ body.auth-locked .main { display: none; }
 .garden-switcher select { max-width: 180px; padding: 7px 28px 7px 10px; border: 1px solid var(--border); border-radius: 9px; color: var(--text); background: var(--surface2); font: inherit; font-size: .75rem; }
 .account-menu-btn { display: inline-flex; align-items: center; gap: 7px; }
 .account-menu-btn #account-avatar { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; color: var(--accent); background: var(--accent-light); font-size: .72rem; font-weight: 750; }
+.account-menu-btn:hover #account-avatar { color: #fff; background: var(--accent); }
+.sidebar-logout-btn { display: flex; align-items: center; gap: 9px; width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-muted); background: var(--surface2); font: inherit; font-size: .8rem; font-weight: 600; text-align: left; cursor: pointer; transition: color var(--transition), border-color var(--transition), background var(--transition); }
+.sidebar-logout-btn span { font-size: 1.05rem; }
+.sidebar-logout-btn:hover { border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); color: var(--danger); background: var(--danger-light); }
 @media (max-width: 700px) {
   .onboarding-shell { place-items: start center; }
   .onboarding-head { align-items: flex-start; }
