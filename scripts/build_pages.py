@@ -17,7 +17,7 @@ def build(output: Path, api_base: str) -> None:
     output.mkdir(parents=True, exist_ok=True)
 
     html = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
-    for asset_ref in ('href="static/css/style.css"', 'src="static/js/app.js"'):
+    for asset_ref in ('href="static/css/style.css', 'src="static/js/app.js'):
         if asset_ref not in html:
             raise ValueError(f"Expected Pages-relative asset reference was not found: {asset_ref}")
 

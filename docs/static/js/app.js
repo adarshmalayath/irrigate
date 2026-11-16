@@ -4,17 +4,12 @@
 "use strict";
 
 // ─── State ───────────────────────────────────────
-let savedGarden = null;
-try {
-  const parsed = JSON.parse(localStorage.getItem("garden_location") || "null");
-  if (parsed && Number.isFinite(Number(parsed.lat)) && Number.isFinite(Number(parsed.lon))) {
-    savedGarden = { lat: Number(parsed.lat), lon: Number(parsed.lon), label: parsed.label || "Garden" };
-  }
-} catch (_) {
-  // Storage can be disabled by the browser; the server's configured garden remains usable.
-}
-
 const state = {
+  user:       null,
+  gardens:    [],
+  activeGardenId: null,
+  plantType:  null,
+  soilType:   null,
   weather:    null,
   sensors:    null,
   controller: null,
@@ -25,65 +20,61 @@ const state = {
   gpsLat:     null,
   gpsLon:     null,
   gpsAcc:     null,
-  homeLat:    savedGarden?.lat ?? null,
-  homeLon:    savedGarden?.lon ?? null,
-  homeLabel:  savedGarden?.label ?? "Garden location not set",
+  homeLat:    null,
+  homeLon:    null,
+  homeLabel:  "Garden location not set",
   modeLocked: false,
 };
 
 // ─── DOM helpers ─────────────────────────────────
 const $  = id  => document.getElementById(id);
 const $$ = sel => document.querySelectorAll(sel);
+let socket = null;
+let authMode = "login";
 
 // ─── Socket ──────────────────────────────────────
 const API_BASE = window.IRRIGATE_API_BASE || window.location.origin;
 // Render currently starts this service with the gevent worker, which supports
 // Socket.IO polling but not WebSocket upgrades. Stay on polling to avoid failed
 // upgrade requests and keep live state updates connected.
-const socket = io(API_BASE, { transports: ["polling"] });
-
-socket.on("connect", () => {
-  state.connected = true;
-  updateConnDot(true);
-  // GPS can arrive before the socket handshake finishes; replay the latest fix
-  // so the backend geofence receives the browser's current position.
-  if (state.gpsLat != null && state.gpsLon != null) {
-    socket.emit("location_update", { lat: state.gpsLat, lon: state.gpsLon });
+function connectDashboardSocket() {
+  if (!socket) {
+    socket = io(API_BASE, { transports: ["polling"], autoConnect: false, withCredentials: true });
+    socket.on("connect", () => {
+      state.connected = true;
+      updateConnDot(true);
+      if (state.gpsLat != null && state.gpsLon != null) {
+        socket.emit("location_update", { lat: state.gpsLat, lon: state.gpsLon });
+      }
+      const garden = state.gardens.find(item => item.id === state.activeGardenId);
+      if (garden) socket.emit("set_home", { lat: garden.latitude, lon: garden.longitude, label: garden.location_label });
+      showToast("🌿 Connected to Irrigate", "success");
+    });
+    socket.on("disconnect", () => {
+      state.connected = false;
+      updateConnDot(false);
+      showToast("⚠️ Server disconnected", "warning");
+    });
+    socket.on("state_update", data => {
+      if (data.weather)    state.weather    = data.weather;
+      if (data.sensors)    state.sensors    = data.sensors;
+      if (data.controller) {
+        state.controller = data.controller;
+        if (data.controller.home_lat != null && data.controller.home_lon != null) {
+          state.homeLat = data.controller.home_lat;
+          state.homeLon = data.controller.home_lon;
+          state.homeLabel = data.controller.home_label || state.weather?.city || `Garden ${Number(state.homeLat).toFixed(4)}, ${Number(state.homeLon).toFixed(4)}`;
+        }
+        state.modeLocked = data.controller.mode_locked || false;
+      }
+      if (data.decision)   state.decision   = data.decision;
+      if (data.notifications?.length) handleNotifications(data.notifications);
+      renderAll();
+    });
+    socket.on("notification", n => handleNotifications([n]));
   }
-  if (savedGarden) {
-    socket.emit("set_home", savedGarden);
-  }
-  showToast("🌿 Connected to Irrigate", "success");
-});
-
-socket.on("disconnect", () => {
-  state.connected = false;
-  updateConnDot(false);
-  showToast("⚠️ Server disconnected", "warning");
-});
-
-socket.on("state_update", data => {
-  if (data.weather)    state.weather    = data.weather;
-  if (data.sensors)    state.sensors    = data.sensors;
-  if (data.controller) {
-    state.controller = data.controller;
-    if (data.controller.home_lat != null && data.controller.home_lon != null) {
-      state.homeLat = data.controller.home_lat;
-      state.homeLon = data.controller.home_lon;
-      state.homeLabel = data.controller.home_label || state.weather?.city || `Garden ${Number(state.homeLat).toFixed(4)}, ${Number(state.homeLon).toFixed(4)}`;
-    }
-    // If no saved or server-configured garden exists, use the first real GPS
-    // fix as the garden point so weather and geofencing have coordinates.
-    seedGardenFromGPS();
-    // Sync mode-locked flag from server
-    state.modeLocked = data.controller.mode_locked || false;
-  }
-  if (data.decision)   state.decision   = data.decision;
-  if (data.notifications?.length) handleNotifications(data.notifications);
-  renderAll();
-});
-
-socket.on("notification", n => handleNotifications([n]));
+  if (!socket.connected) socket.connect();
+}
 
 // ─── Render pipeline ─────────────────────────────
 
@@ -286,6 +277,11 @@ function renderGeoCard() {
         ? "Auto held for 1 hour"
         : `${mode === "auto" ? "Auto" : "Manual"} mode active`;
       $("geo-sub").textContent = `You're home — ${modeDescription}`;
+
+      // Auto-fix: if GPS says you're home but toggle still shows Auto, silently restore manual
+      if (mode === "auto") {
+        restoreGpsMode(true);
+      }
     }
   } else {
     $("geo-distance").textContent = "-- mi";
@@ -299,13 +295,19 @@ function renderGeoCard() {
 
 /* ── Settings section ── */
 function renderSettingsSection() {
-  // GPS fields
+  // Live GPS (user position)
   $("sett-gps-status").textContent = state.gpsActive ? "✅ Active" : "⏳ Waiting…";
   $("sett-gps-status").style.color = state.gpsActive ? "var(--success)" : "var(--text-muted)";
   $("sett-lat").textContent = state.gpsLat != null ? state.gpsLat.toFixed(6) : "--";
   $("sett-lon").textContent = state.gpsLon != null ? state.gpsLon.toFixed(6) : "--";
   $("sett-acc").textContent = state.gpsAcc != null ? `±${state.gpsAcc.toFixed(0)} m` : "--";
-  $("sett-home").textContent = state.homeLabel;
+
+  // Saved garden (home) location
+  $("sett-home").textContent = state.homeLabel || "Not set";
+  $("sett-home-lat").textContent = state.homeLat != null ? state.homeLat.toFixed(6) : "--";
+  $("sett-home-lon").textContent = state.homeLon != null ? state.homeLon.toFixed(6) : "--";
+
+  // Distance
   const dist = state.controller?.user_distance_miles;
   $("sett-distance").textContent = dist != null ? `${dist.toFixed(2)} mi` : "--";
 
@@ -595,7 +597,7 @@ function toggleAllZones(on) {
 }
 
 function refillTank() {
-  fetch(`${API_BASE}/api/tank/refill`, { method: "POST" })
+  fetch(`${API_BASE}/api/tank/refill`, { method: "POST", credentials: "include" })
     .then(() => showToast("🚿 Tank refilled to 100%!", "success"));
 }
 
@@ -636,13 +638,7 @@ function setHomeLocation(lat, lon, label) {
   state.homeLat  = lat;
   state.homeLon  = lon;
   state.homeLabel = label;
-  savedGarden = { lat, lon, label };
-  try {
-    localStorage.setItem("garden_location", JSON.stringify(savedGarden));
-  } catch (_) {
-    showToast("Garden location is set for this visit, but the browser could not save it.", "warning");
-  }
-  socket.emit("set_home", { lat, lon, label });
+  socket?.emit("set_home", { lat, lon, label });
   showToast(`🏡 Home set to ${label}`, "success");
   $("sett-home").textContent = label;
 }
@@ -837,6 +833,308 @@ function updateConnDot(on) {
   d.title = on ? "Connected" : "Disconnected";
 }
 
+// ─── Account and first-run garden setup ─────────────────
+
+function showAuth(message = "") {
+  document.body.classList.add("auth-locked");
+  $("auth-shell").classList.remove("hidden");
+  $("onboarding-shell").classList.add("hidden");
+  $("auth-error").textContent = message;
+  $("auth-email").focus();
+}
+
+function showOnboarding() {
+  document.body.classList.add("auth-locked");
+  $("auth-shell").classList.add("hidden");
+  $("onboarding-shell").classList.remove("hidden");
+  $("onboarding-error").textContent = "";
+  if (!$("onboarding-gardens").children.length) addOnboardingGarden({ name: "Home garden" });
+}
+
+function setAuthMode(mode) {
+  authMode = mode;
+  const signup = mode === "signup";
+  $("auth-login-tab").classList.toggle("active", !signup);
+  $("auth-signup-tab").classList.toggle("active", signup);
+  $("auth-login-tab").setAttribute("aria-selected", String(!signup));
+  $("auth-signup-tab").setAttribute("aria-selected", String(signup));
+  $("auth-name-field").classList.toggle("hidden", !signup);
+  $("auth-name").required = signup;
+  $("auth-password").autocomplete = signup ? "new-password" : "current-password";
+  $("auth-title").textContent = signup ? "Create your account" : "Welcome to your garden";
+  $("auth-submit").textContent = signup ? "Create account" : "Log in";
+  $("auth-error").textContent = "";
+}
+
+function addOnboardingGarden(initial = {}) {
+  const list = $("onboarding-gardens");
+  if (list.children.length >= 10) {
+    $("onboarding-error").textContent = "You can add up to 10 garden locations.";
+    return;
+  }
+  const fragment = $("onboarding-garden-template").content.cloneNode(true);
+  const row = fragment.querySelector("[data-garden-row]");
+  const index = list.children.length + 1;
+  row.querySelector("[data-garden-name]").value = initial.name || `Garden ${index}`;
+  row.querySelector("[data-garden-title]").textContent = `Garden ${index}`;
+  row.querySelector("[data-garden-remove]").addEventListener("click", () => {
+    row.remove();
+    renumberOnboardingGardens();
+  });
+  row.querySelector("[data-garden-name]").addEventListener("input", event => {
+    row.querySelector("[data-garden-title]").textContent = event.target.value.trim() || `Garden ${Array.from(list.children).indexOf(row) + 1}`;
+  });
+  row.querySelector("[data-garden-postcode]").addEventListener("input", () => {
+    delete row.dataset.latitude;
+    delete row.dataset.longitude;
+    delete row.dataset.locationLabel;
+    delete row.dataset.postcode;
+    row.querySelector("[data-garden-coordinate]").textContent = "Choose a postcode or use GPS";
+    row.querySelector("[data-garden-result]").textContent = "";
+  });
+  row.querySelector("[data-garden-find]").addEventListener("click", () => findOnboardingPostcode(row));
+  row.querySelector("[data-garden-postcode]").addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      findOnboardingPostcode(row);
+    }
+  });
+  row.querySelector("[data-garden-gps]").addEventListener("click", () => setOnboardingGardenGPS(row));
+  list.appendChild(fragment);
+  renumberOnboardingGardens();
+}
+
+function renumberOnboardingGardens() {
+  const rows = Array.from($("onboarding-gardens").querySelectorAll("[data-garden-row]"));
+  rows.forEach((row, index) => {
+    row.querySelector("[data-garden-title]").textContent = row.querySelector("[data-garden-name]").value.trim() || `Garden ${index + 1}`;
+    row.querySelector("[data-garden-remove]").disabled = rows.length === 1;
+  });
+  $("onboarding-location-count").textContent = `${rows.length} location${rows.length === 1 ? "" : "s"}`;
+}
+
+async function findOnboardingPostcode(row) {
+  const input = row.querySelector("[data-garden-postcode]");
+  const result = row.querySelector("[data-garden-result]");
+  const postcode = input.value.trim().replace(/\s+/g, "").toUpperCase();
+  if (!postcode) {
+    result.className = "garden-result error";
+    result.textContent = "Enter a UK postcode first.";
+    return;
+  }
+  result.className = "garden-result loading";
+  result.textContent = "Finding location…";
+  row.querySelector("[data-garden-find]").disabled = true;
+  try {
+    const response = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`);
+    const body = await response.json();
+    if (body.status !== 200 || !body.result) throw new Error("Postcode not found. Check it and try again.");
+    const found = body.result;
+    const label = [found.postcode, found.admin_ward, found.admin_district].filter(Boolean).join(", ");
+    row.dataset.latitude = found.latitude;
+    row.dataset.longitude = found.longitude;
+    row.dataset.locationLabel = label;
+    row.dataset.postcode = found.postcode;
+    row.querySelector("[data-garden-coordinate]").textContent = `${Number(found.latitude).toFixed(5)}, ${Number(found.longitude).toFixed(5)}`;
+    result.className = "garden-result ok";
+    result.textContent = `Location found: ${label}`;
+  } catch (error) {
+    result.className = "garden-result error";
+    result.textContent = error.message || "Could not look up that postcode.";
+  } finally {
+    row.querySelector("[data-garden-find]").disabled = false;
+  }
+}
+
+function setOnboardingGardenGPS(row) {
+  const result = row.querySelector("[data-garden-result]");
+  if (!navigator.geolocation) {
+    result.className = "garden-result error";
+    result.textContent = "GPS is not available in this browser.";
+    return;
+  }
+  result.className = "garden-result loading";
+  result.textContent = "Waiting for GPS permission…";
+  navigator.geolocation.getCurrentPosition(position => {
+    const { latitude, longitude } = position.coords;
+    const label = `GPS ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+    row.dataset.latitude = latitude;
+    row.dataset.longitude = longitude;
+    row.dataset.locationLabel = label;
+    row.dataset.postcode = "";
+    row.querySelector("[data-garden-postcode]").value = "";
+    row.querySelector("[data-garden-coordinate]").textContent = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+    result.className = "garden-result ok";
+    result.textContent = "Current GPS location saved for this garden.";
+  }, error => {
+    result.className = "garden-result error";
+    result.textContent = error.code === 1 ? "GPS permission was denied. Allow location access and try again." : "Could not get a GPS fix. Try again or enter a postcode.";
+  }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
+}
+
+async function submitAccount(event) {
+  event.preventDefault();
+  const button = $("auth-submit");
+  button.disabled = true;
+  button.textContent = authMode === "signup" ? "Creating account…" : "Signing in…";
+  $("auth-error").textContent = "";
+  try {
+    const response = await fetch(`${API_BASE}/api/auth/${authMode}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        name: $("auth-name").value.trim(),
+        email: $("auth-email").value.trim(),
+        password: $("auth-password").value,
+      }),
+    });
+    const body = await response.json();
+    if (!response.ok || !body.ok) throw new Error(body.error || "Could not sign in. Try again.");
+    if (body.needs_onboarding) {
+      state.user = body.user;
+      showOnboarding();
+    } else {
+      launchDashboard(body.user);
+    }
+  } catch (error) {
+    $("auth-error").textContent = error.message || "Could not reach Irrigate. Check your connection and try again.";
+    button.textContent = authMode === "signup" ? "Create account" : "Log in";
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function submitOnboarding(event) {
+  event.preventDefault();
+  const button = $("onboarding-submit");
+  const rows = Array.from($("onboarding-gardens").querySelectorAll("[data-garden-row]"));
+  const gardens = rows.map(row => ({
+    name: row.querySelector("[data-garden-name]").value.trim(),
+    postcode: row.dataset.postcode || "",
+    location_label: row.dataset.locationLabel || "",
+    latitude: row.dataset.latitude,
+    longitude: row.dataset.longitude,
+  }));
+  $("onboarding-error").textContent = "";
+  button.disabled = true;
+  button.textContent = "Saving your garden…";
+  try {
+    const response = await fetch(`${API_BASE}/api/onboarding`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ plant_type: $("onboarding-plant").value, soil_type: $("onboarding-soil").value, gardens }),
+    });
+    const body = await response.json();
+    if (!response.ok || !body.ok) throw new Error(body.error || "Could not save your garden profile.");
+    launchDashboard(body.user);
+  } catch (error) {
+    $("onboarding-error").textContent = error.message || "Could not save your garden profile. Try again.";
+  } finally {
+    button.disabled = false;
+    button.innerHTML = 'Save and open dashboard <span aria-hidden="true">→</span>';
+  }
+}
+
+function renderGardenProfile(user) {
+  state.user = user;
+  state.gardens = user.gardens || [];
+  state.activeGardenId = user.active_garden_id ?? state.gardens[0]?.id ?? null;
+  state.plantType = user.plant_type;
+  state.soilType = user.soil_type;
+  const active = state.gardens.find(garden => garden.id === state.activeGardenId) || state.gardens[0];
+  if (active) {
+    state.activeGardenId = active.id;
+    state.homeLat = Number(active.latitude);
+    state.homeLon = Number(active.longitude);
+    state.homeLabel = active.location_label || active.name;
+  }
+  $("sett-account-email").textContent = user.email || "--";
+  $("sett-plant-type").textContent = user.plant_type || "--";
+  $("sett-soil-type").textContent = user.soil_type || "--";
+  $("sett-garden-count").textContent = `${state.gardens.length} saved`;
+  $("account-avatar").textContent = (user.display_name || user.email || "A").trim().charAt(0).toUpperCase();
+  const wrap = $("garden-switcher-wrap");
+  const select = $("active-garden-select");
+  select.replaceChildren(...state.gardens.map(garden => {
+    const option = document.createElement("option");
+    option.value = garden.id;
+    option.textContent = garden.name;
+    return option;
+  }));
+  select.value = state.activeGardenId == null ? "" : String(state.activeGardenId);
+  wrap.classList.toggle("hidden", state.gardens.length < 2);
+  renderSettingsSection();
+}
+
+function launchDashboard(user) {
+  $("auth-shell").classList.add("hidden");
+  $("onboarding-shell").classList.add("hidden");
+  document.body.classList.remove("auth-locked");
+  renderGardenProfile(user);
+  connectDashboardSocket();
+  const gpsChoice = localStorage.getItem("gps_ok");
+  if (gpsChoice === "1") {
+    startGPS();
+    requestNotifPermission();
+  } else {
+    setTimeout(() => $("gps-modal").classList.remove("hidden"), 700);
+  }
+}
+
+async function bootstrapAccount() {
+  try {
+    const response = await fetch(`${API_BASE}/api/auth/me`, { credentials: "include" });
+    if (response.status === 401) return showAuth();
+    const body = await response.json();
+    if (!response.ok || !body.ok) throw new Error(body.error || "Could not load your account.");
+    if (body.needs_onboarding) {
+      state.user = body.user;
+      return showOnboarding();
+    }
+    launchDashboard(body.user);
+  } catch (_) {
+    showAuth("Irrigate could not be reached. Check your connection, then try again.");
+  }
+}
+
+async function logout() {
+  try {
+    await fetch(`${API_BASE}/api/auth/logout`, { method: "POST", credentials: "include" });
+  } finally {
+    if (socket) socket.disconnect();
+    window.location.reload();
+  }
+}
+
+async function changeActiveGarden(gardenId) {
+  try {
+    const response = await fetch(`${API_BASE}/api/gardens/active`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ garden_id: gardenId }),
+    });
+    const body = await response.json();
+    if (!response.ok || !body.ok) throw new Error(body.error || "Could not switch gardens.");
+    renderGardenProfile(body.user);
+    const garden = body.garden;
+    socket?.emit("set_home", { lat: garden.latitude, lon: garden.longitude, label: garden.location_label });
+    const statusResponse = await fetch(`${API_BASE}/api/status`, { credentials: "include" });
+    if (statusResponse.ok) {
+      const status = await statusResponse.json();
+      state.weather = status.weather;
+      state.sensors = status.sensors;
+      state.controller = status.controller;
+      renderAll();
+    }
+    showToast(`Garden switched to ${garden.name}`, "success");
+  } catch (error) {
+    showToast(error.message || "Could not switch gardens.", "warning");
+  }
+}
+
 // ─── Boot ────────────────────────────────────────
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -861,6 +1159,14 @@ document.addEventListener("DOMContentLoaded", () => {
   // Theme toggle
   $("theme-btn").addEventListener("click", toggleTheme);
   $("alerts-btn").addEventListener("click", () => navigate("notifications"));
+  $("auth-login-tab").addEventListener("click", () => setAuthMode("login"));
+  $("auth-signup-tab").addEventListener("click", () => setAuthMode("signup"));
+  $("auth-form").addEventListener("submit", submitAccount);
+  $("onboarding-form").addEventListener("submit", submitOnboarding);
+  $("add-onboarding-garden").addEventListener("click", () => addOnboardingGarden());
+  $("logout-btn").addEventListener("click", logout);
+  $("settings-logout-btn").addEventListener("click", logout);
+  $("active-garden-select").addEventListener("change", event => changeActiveGarden(event.target.value));
 
   // Zone all-on / all-off
   $("btn-all-on").addEventListener("click",  () => toggleAllZones(true));
@@ -891,48 +1197,67 @@ document.addEventListener("DOMContentLoaded", () => {
     updateBadge();
   });
 
-  // ── Postcode input (Settings) ──
-  // Dynamically inject postcode row into settings location card
-  const locBtnRow = $("loc-btn-row");
-  if (locBtnRow) {
-    const wrap = document.createElement("div");
-    wrap.innerHTML = `
-      <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap;">
-        <input id="postcode-input" type="text" class="postcode-input"
-               placeholder="Enter your postcode" maxlength="8"
-               autocomplete="off" spellcheck="false"
-               style="flex:1;min-width:120px;" />
-        <button id="set-postcode-btn" class="btn btn-sm btn-outline">Set Garden 📍</button>
-      </div>
-      <div id="postcode-result" class="postcode-result" style="margin-top:4px"></div>`;
-    locBtnRow.after(wrap);
-
-    $("postcode-input").value = "";  // user enters their own postcode
-
-    $("set-postcode-btn").addEventListener("click", () => {
-      lookupPostcode($("postcode-input").value);
+  // ── Location tabs ──
+  $$(".loc-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      $$(".loc-tab").forEach(t => t.classList.remove("active"));
+      $$(".loc-tab-panel").forEach(p => p.classList.remove("active"));
+      tab.classList.add("active");
+      $(`tab-${tab.dataset.tab}`)?.classList.add("active");
     });
-    $("postcode-input").addEventListener("keydown", e => {
-      if (e.key === "Enter") lookupPostcode($("postcode-input").value);
-    });
-    $("postcode-input").addEventListener("input", e => {
-      e.target.value = e.target.value.toUpperCase();
-    });
-  }
+  });
 
-  // ── Set Current as Home (GPS) ──
+  // ── Tab: Postcode ──
+  $("postcode-input").addEventListener("input", e => {
+    e.target.value = e.target.value.toUpperCase();
+  });
+  $("postcode-input").addEventListener("keydown", e => {
+    if (e.key === "Enter") lookupPostcode($("postcode-input").value);
+  });
+  $("set-postcode-btn").addEventListener("click", () => {
+    lookupPostcode($("postcode-input").value);
+  });
+
+  // ── Tab: Lat / Lon ──
+  $("set-latlon-btn").addEventListener("click", () => {
+    const lat = parseFloat($("manual-lat").value);
+    const lon = parseFloat($("manual-lon").value);
+    const fb  = $("latlon-result");
+    if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      fb.className = "loc-feedback error";
+      fb.textContent = "❌ Enter valid latitude (−90 to 90) and longitude (−180 to 180)";
+      return;
+    }
+    fb.className = "loc-feedback loading";
+    fb.textContent = "Setting home…";
+    setHomeLocation(lat, lon, `${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+    fb.className = "loc-feedback ok";
+    fb.textContent = `✅ Home set to ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  });
+  // Allow Enter key in either lat/lon field
+  ["manual-lat", "manual-lon"].forEach(id => {
+    $(id).addEventListener("keydown", e => {
+      if (e.key === "Enter") $("set-latlon-btn").click();
+    });
+  });
+
+  // ── Tab: GPS — Set current position as home ──
   $("sett-set-home-btn").addEventListener("click", () => {
+    const fb = $("gps-home-result");
     if (state.gpsLat != null) {
-      setHomeLocation(state.gpsLat, state.gpsLon, `${state.gpsLat.toFixed(4)}, ${state.gpsLon.toFixed(4)}`);
-      localStorage.setItem("home_set_by_postcode", "1");
+      setHomeLocation(state.gpsLat, state.gpsLon,
+        `${state.gpsLat.toFixed(5)}, ${state.gpsLon.toFixed(5)}`);
+      fb.className = "loc-feedback ok";
+      fb.textContent = `✅ Home set to ${state.gpsLat.toFixed(5)}, ${state.gpsLon.toFixed(5)}`;
     } else {
-      showToast("📍 GPS not active yet — please enable location first", "warning");
+      fb.className = "loc-feedback error";
+      fb.textContent = "❌ GPS not active yet — enable it first";
+      showToast("📍 GPS not active yet — enable it first", "warning");
     }
   });
 
-  // ── GPS buttons ──
+  // ── GPS enable button (tab + modal) ──
   $("sett-gps-btn").addEventListener("click", () => {
-    $("gps-modal").classList.add("hidden");
     localStorage.setItem("gps_ok", "1");
     startGPS();
     requestNotifPermission();
@@ -947,23 +1272,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   $("gps-skip-btn").addEventListener("click", () => {
     $("gps-modal").classList.add("hidden");
-    showToast("📍 GPS is off for this visit. Enable it in Settings when ready.", "info");
+    showToast("📍 GPS is off. Enable it anytime in Settings → Garden Location.", "info");
   });
 
-  // ── Notification permission button (settings) ──
+  // ── Notification permission ──
   $("sett-notif-btn").addEventListener("click", requestNotifPermission);
 
-  // ── GPS modal on first load ──
-  const gpsChoice = localStorage.getItem("gps_ok");
-  if (gpsChoice === "1") {
-    startGPS();
-    requestNotifPermission();
-  } else {
-    // Older versions remembered "skip" forever. Ask again next visit so the
-    // user can opt into real GPS weather without finding the settings first.
-    setTimeout(() => $("gps-modal").classList.remove("hidden"), 700);
-  }
+  // ── Restore GPS mode button ──
+  $("restore-gps-mode-btn").addEventListener("click", restoreGpsMode);
 
-  // Seed the home location from default postcode on first render
-  $("sett-home").textContent = state.homeLabel;
+  bootstrapAccount();
 });

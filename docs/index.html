@@ -4,13 +4,69 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🌿 Irrigate — Smart Garden</title>
-  <link rel="stylesheet" href="static/css/style.css" />
+  <link rel="stylesheet" href="static/css/style.css?v=auth-onboarding-2" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <script>window.IRRIGATE_API_BASE = "https://irrigate-v3dw.onrender.com";</script>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
-<body class="dark">
+<body class="dark auth-locked">
+
+<section class="auth-shell" id="auth-shell" aria-labelledby="auth-title">
+  <div class="auth-backdrop" aria-hidden="true">
+    <div class="auth-orb auth-orb-one"></div><div class="auth-orb auth-orb-two"></div>
+    <div class="auth-leaf-mark">🌿</div>
+  </div>
+  <div class="auth-card">
+    <a class="auth-brand" href="#"><span>🌿</span> Irrigate</a>
+    <p class="auth-eyebrow">SMART GARDEN CARE</p>
+    <h1 id="auth-title">Welcome to your garden</h1>
+    <p class="auth-intro">Log in to see your garden conditions and irrigation controls.</p>
+    <div class="auth-tabs" role="tablist" aria-label="Account access">
+      <button class="auth-tab active" id="auth-login-tab" type="button" role="tab" aria-selected="true">Log in</button>
+      <button class="auth-tab" id="auth-signup-tab" type="button" role="tab" aria-selected="false">Create account</button>
+    </div>
+    <form id="auth-form" class="auth-form">
+      <label class="auth-field auth-signup-only hidden" id="auth-name-field"><span>Your name</span><input id="auth-name" type="text" autocomplete="name" maxlength="80" placeholder="Your name" /></label>
+      <label class="auth-field"><span>Email address</span><input id="auth-email" type="email" autocomplete="email" maxlength="254" required placeholder="you@example.com" /></label>
+      <label class="auth-field"><span>Password</span><input id="auth-password" type="password" autocomplete="current-password" minlength="8" maxlength="128" required placeholder="At least 8 characters" /></label>
+      <p class="auth-error" id="auth-error" role="alert" aria-live="polite"></p>
+      <button class="btn btn-primary btn-full auth-submit" id="auth-submit" type="submit">Log in</button>
+    </form>
+    <p class="auth-footnote">Your garden profile is saved to your account.</p>
+  </div>
+</section>
+
+<section class="onboarding-shell hidden" id="onboarding-shell" aria-labelledby="onboarding-title">
+  <div class="onboarding-card">
+    <div class="onboarding-head">
+      <div><p class="auth-eyebrow">YOUR GARDEN PROFILE</p><h1 id="onboarding-title">Let’s set up your garden</h1><p class="auth-intro">Tell Irrigate what you grow and where your gardens are. Add more than one location if you need to.</p></div>
+      <div class="onboarding-step"><span>01</span><i></i><span>02</span></div>
+    </div>
+    <form id="onboarding-form" class="onboarding-form">
+      <div class="onboarding-types">
+        <label class="auth-field"><span>What do you mainly grow?</span><select id="onboarding-plant" required><option value="">Select plant type</option><option>Vegetables</option><option>Herbs</option><option>Flowers</option><option>Lawn</option><option>Fruit trees</option><option>Mixed garden</option><option>Other</option></select></label>
+        <label class="auth-field"><span>What is your soil type?</span><select id="onboarding-soil" required><option value="">Select soil type</option><option>Loamy</option><option>Clay</option><option>Sandy</option><option>Silty</option><option>Peaty</option><option>Chalky</option><option>Other</option></select></label>
+      </div>
+      <div class="onboarding-location-heading"><div><h2>Garden locations</h2><p>Add at least one location. The first one will open on your dashboard.</p></div><span class="location-count" id="onboarding-location-count">1 location</span></div>
+      <div class="onboarding-gardens" id="onboarding-gardens"></div>
+      <button class="btn btn-outline add-garden-btn" type="button" id="add-onboarding-garden">＋ Add another garden</button>
+      <p class="auth-error" id="onboarding-error" role="alert" aria-live="polite"></p>
+      <div class="onboarding-footer"><span>Locations are used to fetch local weather for your gardens.</span><button class="btn btn-primary onboarding-submit" id="onboarding-submit" type="submit">Save and open dashboard <span aria-hidden="true">→</span></button></div>
+    </form>
+  </div>
+</section>
+
+<template id="onboarding-garden-template">
+  <article class="setup-garden-card" data-garden-row>
+    <div class="setup-garden-head"><div class="setup-garden-icon">📍</div><div class="setup-garden-title"><strong data-garden-title>Garden 1</strong><span data-garden-coordinate>Choose a postcode or use GPS</span></div><button class="icon-button remove-garden-btn" type="button" data-garden-remove aria-label="Remove garden">×</button></div>
+    <div class="setup-garden-fields">
+      <label class="auth-field"><span>Garden name</span><input data-garden-name type="text" maxlength="80" required placeholder="Back garden" /></label>
+      <label class="auth-field"><span>UK postcode</span><div class="postcode-field"><input data-garden-postcode type="text" maxlength="8" autocomplete="postal-code" placeholder="e.g. HA9 7QU" /><button class="btn btn-sm btn-outline" type="button" data-garden-find>Find</button></div></label>
+    </div>
+    <div class="setup-garden-actions"><button class="text-action" type="button" data-garden-gps>◎ Use current GPS</button><span data-garden-result role="status"></span></div>
+  </article>
+</template>
 
 <!-- ══════════════════════════════════════════
      SIDEBAR
@@ -64,10 +120,12 @@
     <div class="topbar-title" id="page-title">Dashboard</div>
     <div class="topbar-actions">
       <div class="connection-dot" id="conn-dot" title="Disconnected"></div>
+      <label class="garden-switcher hidden" id="garden-switcher-wrap"><span>Garden</span><select id="active-garden-select" aria-label="Active garden"></select></label>
       <button class="btn btn-sm btn-ghost topbar-alerts" id="alerts-btn" type="button" title="Open alerts" aria-label="Open alerts">
         <span aria-hidden="true">🔔</span>
         <span class="badge topbar-badge" id="notif-badge" style="display:none">0</span>
       </button>
+      <button class="btn btn-sm btn-ghost account-menu-btn" id="logout-btn" type="button" title="Log out"><span id="account-avatar">A</span><span class="logout-label">Log out</span></button>
       <button class="btn btn-sm btn-ghost" id="theme-btn" title="Toggle theme">🌙</button>
     </div>
   </header>
@@ -329,6 +387,17 @@
     <h2 class="section-heading">Settings</h2>
     <div class="settings-grid">
 
+      <div class="settings-card">
+        <div class="settings-card-title">👤 Account &amp; garden profile</div>
+        <div class="loc-info-grid">
+          <div class="loc-info-row"><span class="loc-info-key">Signed in as</span><span class="loc-info-val" id="sett-account-email">--</span></div>
+          <div class="loc-info-row"><span class="loc-info-key">Plant type</span><span class="loc-info-val" id="sett-plant-type">--</span></div>
+          <div class="loc-info-row"><span class="loc-info-key">Soil type</span><span class="loc-info-val" id="sett-soil-type">--</span></div>
+          <div class="loc-info-row"><span class="loc-info-key">Saved gardens</span><span class="loc-info-val" id="sett-garden-count">--</span></div>
+        </div>
+        <button class="btn btn-sm btn-outline" id="settings-logout-btn" type="button" style="margin-top:12px">Log out</button>
+      </div>
+
       <!-- Irrigation Mode card -->
       <div class="settings-card">
         <div class="settings-card-title">💧 Irrigation Mode</div>
@@ -363,29 +432,35 @@
       <div class="settings-card">
         <div class="settings-card-title">📍 Garden Location</div>
         <p class="settings-desc">
-          Your device GPS is used to detect when you leave or return home, automatically switching irrigation modes. Make sure location permission is granted in your browser.
+          Set where your garden is. This is used for weather data and the 50-mile geofence.
+          Your device GPS tracks <em>you</em> separately.
         </p>
 
+        <!-- Current home info -->
         <div class="loc-info-grid">
           <div class="loc-info-row">
-            <span class="loc-info-key">GPS Status</span>
+            <span class="loc-info-key">Home set to</span>
+            <span class="loc-info-val" id="sett-home">My Garden</span>
+          </div>
+          <div class="loc-info-row">
+            <span class="loc-info-key">Garden lat</span>
+            <span class="loc-info-val" id="sett-home-lat">--</span>
+          </div>
+          <div class="loc-info-row">
+            <span class="loc-info-key">Garden lon</span>
+            <span class="loc-info-val" id="sett-home-lon">--</span>
+          </div>
+          <div class="loc-info-row">
+            <span class="loc-info-key">Your GPS</span>
             <span class="loc-info-val" id="sett-gps-status">Waiting…</span>
           </div>
           <div class="loc-info-row">
-            <span class="loc-info-key">Latitude</span>
-            <span class="loc-info-val" id="sett-lat">--</span>
-          </div>
-          <div class="loc-info-row">
-            <span class="loc-info-key">Longitude</span>
-            <span class="loc-info-val" id="sett-lon">--</span>
+            <span class="loc-info-key">Your lat / lon</span>
+            <span class="loc-info-val"><span id="sett-lat">--</span> / <span id="sett-lon">--</span></span>
           </div>
           <div class="loc-info-row">
             <span class="loc-info-key">Accuracy</span>
             <span class="loc-info-val" id="sett-acc">--</span>
-          </div>
-          <div class="loc-info-row">
-            <span class="loc-info-key">Home set to</span>
-            <span class="loc-info-val" id="sett-home">Your configured garden location</span>
           </div>
           <div class="loc-info-row">
             <span class="loc-info-key">Distance from home</span>
@@ -393,12 +468,50 @@
           </div>
         </div>
 
-        <div class="loc-btn-row">
-          <button class="btn btn-sm btn-primary" id="sett-gps-btn">📍 Enable GPS</button>
-          <button class="btn btn-sm btn-outline" id="sett-set-home-btn">🏡 Set Current as Home</button>
+        <!-- Input method tabs -->
+        <div class="loc-tabs">
+          <button class="loc-tab active" data-tab="postcode">Postcode</button>
+          <button class="loc-tab" data-tab="latlon">Lat / Lon</button>
+          <button class="loc-tab" data-tab="gps">Use My GPS</button>
         </div>
-        <div class="settings-note" style="margin-top:8px">
-          Weather and geofencing use the saved garden location. If GPS is active while you are at the garden, tap <strong>Set Current as Home</strong>; otherwise, enter the garden postcode above.
+
+        <!-- Tab: Postcode -->
+        <div class="loc-tab-panel active" id="tab-postcode">
+          <div class="loc-input-row">
+            <input id="postcode-input" type="text" class="loc-input"
+                   placeholder="e.g. HA9 7QU" maxlength="8"
+                   autocomplete="off" spellcheck="false" />
+            <button class="btn btn-sm btn-primary" id="set-postcode-btn">Set 📍</button>
+          </div>
+          <div class="loc-feedback" id="postcode-result"></div>
+        </div>
+
+        <!-- Tab: Lat / Lon -->
+        <div class="loc-tab-panel" id="tab-latlon">
+          <div class="loc-input-row">
+            <input id="manual-lat" type="number" class="loc-input" step="0.000001"
+                   min="-90" max="90" placeholder="Latitude  e.g. 51.5603" />
+            <input id="manual-lon" type="number" class="loc-input" step="0.000001"
+                   min="-180" max="180" placeholder="Longitude  e.g. -0.2937" />
+            <button class="btn btn-sm btn-primary" id="set-latlon-btn">Set 📍</button>
+          </div>
+          <div class="loc-feedback" id="latlon-result"></div>
+        </div>
+
+        <!-- Tab: GPS -->
+        <div class="loc-tab-panel" id="tab-gps">
+          <p class="settings-desc" style="margin:0">
+            Tap the button while you are standing in your garden. Your current GPS position will become the home location.
+          </p>
+          <div class="loc-btn-row" style="margin-top:10px">
+            <button class="btn btn-sm btn-primary" id="sett-gps-btn">📍 Enable GPS</button>
+            <button class="btn btn-sm btn-outline" id="sett-set-home-btn">🏡 Set Current as Home</button>
+          </div>
+          <div class="loc-feedback" id="gps-home-result"></div>
+        </div>
+
+        <div class="settings-note">
+          Weather and geofencing use the saved garden location. Your moving GPS position is tracked separately to detect when you leave or return.
         </div>
       </div>
 
@@ -445,6 +558,6 @@
   </div>
 </div>
 
-<script src="static/js/app.js?v=auto-hold-2"></script>
+<script src="static/js/app.js?v=auth-onboarding-2"></script>
 </body>
 </html>
