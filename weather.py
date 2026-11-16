@@ -1,9 +1,11 @@
 """Coordinate-based weather data from OpenWeather for the Irrigate dashboard."""
 
 import math
+import logging
 import os
 import time
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
 
@@ -12,6 +14,7 @@ OPENWEATHER_BASE = "https://api.openweathermap.org/data/2.5"
 OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 CACHE_TTL_SECONDS = 600
 FAILURE_CACHE_TTL_SECONDS = 60
+logger = logging.getLogger(__name__)
 
 
 class WeatherService:
@@ -123,31 +126,81 @@ class WeatherService:
 
     @staticmethod
     def _attach_uv(weather: dict, lat: float, lon: float) -> dict:
-        """Attach the current UV index from Open-Meteo for this garden point."""
+        """Attach the current UV index, falling back to the nearest hourly value."""
+        params = {
+            "latitude": lat,
+            "longitude": lon,
+            "timezone": "auto",
+        }
+        errors = []
+
         try:
             response = requests.get(
                 OPEN_METEO_FORECAST_URL,
-                params={
-                    "latitude": lat,
-                    "longitude": lon,
-                    "current": "uv_index",
-                    "timezone": "auto",
-                },
-                timeout=8,
+                params={**params, "current": "uv_index"},
+                timeout=12,
             )
             response.raise_for_status()
             payload = response.json()
             current = payload.get("current", {}) if isinstance(payload, dict) else {}
-            raw_uvi = current.get("uv_index")
-            uvi = float(raw_uvi)
-            if math.isfinite(uvi) and uvi >= 0:
-                weather["uvi"] = round(uvi, 1)
-                weather["uvi_available"] = True
-                weather["uv_timestamp"] = current.get("time")
-        except (requests.RequestException, ValueError, TypeError, AttributeError):
-            # UV is supplemental: keep the primary weather response usable.
-            pass
+            if isinstance(current, dict) and WeatherService._set_uv(weather, current.get("uv_index"), current.get("time")):
+                return weather
+            errors.append("current value missing")
+        except (requests.RequestException, ValueError, TypeError, AttributeError) as exc:
+            errors.append(type(exc).__name__)
+
+        # Some model responses omit the current field while still returning an
+        # hourly UV series. Request a short window and use the closest timestamp.
+        try:
+            response = requests.get(
+                OPEN_METEO_FORECAST_URL,
+                params={**params, "hourly": "uv_index", "past_hours": 3, "forecast_hours": 2},
+                timeout=12,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            hourly = payload.get("hourly", {}) if isinstance(payload, dict) else {}
+            times = hourly.get("time", []) if isinstance(hourly, dict) else []
+            values = hourly.get("uv_index", []) if isinstance(hourly, dict) else []
+            zone_name = payload.get("timezone", "UTC") if isinstance(payload, dict) else "UTC"
+            try:
+                zone = ZoneInfo(zone_name)
+            except (ZoneInfoNotFoundError, TypeError):
+                zone = timezone.utc
+            target_epoch = datetime.now(zone).timestamp()
+            candidates = []
+            for stamp, value in zip(times, values):
+                try:
+                    value = float(value)
+                    local_time = datetime.fromisoformat(stamp).replace(tzinfo=zone)
+                    if math.isfinite(value) and value >= 0:
+                        candidates.append((abs(local_time.timestamp() - target_epoch), stamp, value))
+                except (TypeError, ValueError):
+                    continue
+            if candidates:
+                _, stamp, value = min(candidates, key=lambda item: item[0])
+                WeatherService._set_uv(weather, value, stamp)
+            else:
+                errors.append("hourly values missing")
+        except (requests.RequestException, ValueError, TypeError, AttributeError) as exc:
+            errors.append(type(exc).__name__)
+
+        if not weather.get("uvi_available"):
+            logger.warning("Open-Meteo UV lookup unavailable: %s", ", ".join(errors))
         return weather
+
+    @staticmethod
+    def _set_uv(weather: dict, raw_uvi, timestamp=None) -> bool:
+        try:
+            uvi = float(raw_uvi)
+        except (TypeError, ValueError):
+            return False
+        if not math.isfinite(uvi) or uvi < 0:
+            return False
+        weather["uvi"] = round(uvi, 1)
+        weather["uvi_available"] = True
+        weather["uv_timestamp"] = timestamp
+        return True
 
     @staticmethod
     def _raise_api_error(response) -> None:
