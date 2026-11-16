@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🌿 Irrigate — Smart Garden</title>
-  <link rel="stylesheet" href="static/css/style.css?v=auth-onboarding-2" />
+  <link rel="stylesheet" href="static/css/style.css?v=profile-1" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <script>window.IRRIGATE_API_BASE = "https://irrigate-v3dw.onrender.com";</script>
@@ -89,6 +89,9 @@
     </a>
     <a href="#" class="nav-item" data-section="sensors">
       <span class="nav-icon">📡</span> Sensors
+    </a>
+    <a href="#" class="nav-item" data-section="profile">
+      <span class="nav-icon">👤</span> My Profile
     </a>
     <a href="#" class="nav-item" data-section="settings">
       <span class="nav-icon">⚙️</span> Settings
@@ -382,21 +385,32 @@
     </div>
   </section>
 
+  <!-- ── PROFILE ── -->
+  <section class="section" id="section-profile">
+    <div class="profile-page-heading">
+      <div><h2 class="section-heading">My Profile</h2><p class="profile-page-subtitle">Your account and garden details</p></div>
+      <button class="btn btn-sm btn-outline" id="profile-logout-btn" type="button">Log out</button>
+    </div>
+    <article class="profile-hero-card">
+      <div class="profile-avatar" id="profile-avatar">A</div>
+      <div class="profile-identity"><span class="profile-eyebrow">IRRIGATE ACCOUNT</span><h3 id="profile-name">--</h3><p id="profile-email">--</p></div>
+      <div class="profile-account-state"><span class="profile-state-dot"></span> Account active</div>
+    </article>
+    <div class="profile-detail-grid">
+      <article class="profile-detail-card"><span class="profile-detail-icon">🌿</span><div><span class="profile-detail-label">Main plant type</span><strong id="profile-plant-type">--</strong></div></article>
+      <article class="profile-detail-card"><span class="profile-detail-icon">🪴</span><div><span class="profile-detail-label">Soil type</span><strong id="profile-soil-type">--</strong></div></article>
+      <article class="profile-detail-card"><span class="profile-detail-icon">📍</span><div><span class="profile-detail-label">Saved gardens</span><strong id="profile-garden-count">--</strong></div></article>
+    </div>
+    <div class="profile-gardens-section">
+      <div class="profile-section-heading"><div><h3>Garden locations</h3><p>Saved places used for local weather and garden monitoring.</p></div><span class="profile-section-count" id="profile-garden-heading-count">0 locations</span></div>
+      <div class="profile-garden-list" id="profile-gardens"></div>
+    </div>
+  </section>
+
   <!-- ── SETTINGS ── -->
   <section class="section" id="section-settings">
     <h2 class="section-heading">Settings</h2>
     <div class="settings-grid">
-
-      <div class="settings-card">
-        <div class="settings-card-title">👤 Account &amp; garden profile</div>
-        <div class="loc-info-grid">
-          <div class="loc-info-row"><span class="loc-info-key">Signed in as</span><span class="loc-info-val" id="sett-account-email">--</span></div>
-          <div class="loc-info-row"><span class="loc-info-key">Plant type</span><span class="loc-info-val" id="sett-plant-type">--</span></div>
-          <div class="loc-info-row"><span class="loc-info-key">Soil type</span><span class="loc-info-val" id="sett-soil-type">--</span></div>
-          <div class="loc-info-row"><span class="loc-info-key">Saved gardens</span><span class="loc-info-val" id="sett-garden-count">--</span></div>
-        </div>
-        <button class="btn btn-sm btn-outline" id="settings-logout-btn" type="button" style="margin-top:12px">Log out</button>
-      </div>
 
       <!-- Irrigation Mode card -->
       <div class="settings-card">
@@ -558,6 +572,6 @@
   </div>
 </div>
 
-<script src="static/js/app.js?v=auth-onboarding-2"></script>
+<script src="static/js/app.js?v=profile-1"></script>
 </body>
 </html>

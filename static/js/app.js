@@ -801,6 +801,7 @@ function navigate(section) {
   const titles = {
     dashboard: "Dashboard", zones: "Garden Zones",
     weather: "Weather", sensors: "Sensors",
+    profile: "My Profile",
     settings: "Settings", notifications: "Alerts",
   };
   $("page-title").textContent = titles[section] || section;
@@ -1050,11 +1051,16 @@ function renderGardenProfile(user) {
     state.homeLon = Number(active.longitude);
     state.homeLabel = active.location_label || active.name;
   }
-  $("sett-account-email").textContent = user.email || "--";
-  $("sett-plant-type").textContent = user.plant_type || "--";
-  $("sett-soil-type").textContent = user.soil_type || "--";
-  $("sett-garden-count").textContent = `${state.gardens.length} saved`;
+  const displayName = (user.display_name || "Garden owner").trim();
+  $("profile-avatar").textContent = displayName.charAt(0).toUpperCase();
+  $("profile-name").textContent = displayName;
+  $("profile-email").textContent = user.email || "Email not available";
+  $("profile-plant-type").textContent = user.plant_type || "Not set";
+  $("profile-soil-type").textContent = user.soil_type || "Not set";
+  $("profile-garden-count").textContent = `${state.gardens.length} ${state.gardens.length === 1 ? "garden" : "gardens"}`;
+  $("profile-garden-heading-count").textContent = `${state.gardens.length} ${state.gardens.length === 1 ? "location" : "locations"}`;
   $("account-avatar").textContent = (user.display_name || user.email || "A").trim().charAt(0).toUpperCase();
+  renderProfileGardens();
   const wrap = $("garden-switcher-wrap");
   const select = $("active-garden-select");
   select.replaceChildren(...state.gardens.map(garden => {
@@ -1066,6 +1072,47 @@ function renderGardenProfile(user) {
   select.value = state.activeGardenId == null ? "" : String(state.activeGardenId);
   wrap.classList.toggle("hidden", state.gardens.length < 2);
   renderSettingsSection();
+}
+
+function renderProfileGardens() {
+  const list = $("profile-gardens");
+  list.replaceChildren();
+  for (const garden of state.gardens) {
+    const active = garden.id === state.activeGardenId;
+    const card = document.createElement("article");
+    card.className = `profile-garden-card${active ? " active" : ""}`;
+
+    const icon = document.createElement("div");
+    icon.className = "profile-garden-icon";
+    icon.textContent = "📍";
+
+    const details = document.createElement("div");
+    details.className = "profile-garden-details";
+    const name = document.createElement("h4");
+    name.textContent = garden.name;
+    const location = document.createElement("p");
+    location.textContent = garden.location_label || "Garden location saved";
+    const coordinates = document.createElement("span");
+    coordinates.className = "profile-garden-coordinates";
+    coordinates.textContent = `${Number(garden.latitude).toFixed(5)}, ${Number(garden.longitude).toFixed(5)}`;
+    details.append(name, location, coordinates);
+
+    const status = document.createElement("div");
+    status.className = "profile-garden-status";
+    if (active) {
+      status.classList.add("selected");
+      status.textContent = "In use";
+    } else {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn btn-sm btn-outline";
+      button.textContent = "Use this garden";
+      button.addEventListener("click", () => changeActiveGarden(garden.id));
+      status.appendChild(button);
+    }
+    card.append(icon, details, status);
+    list.appendChild(card);
+  }
 }
 
 function launchDashboard(user) {
@@ -1165,7 +1212,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("onboarding-form").addEventListener("submit", submitOnboarding);
   $("add-onboarding-garden").addEventListener("click", () => addOnboardingGarden());
   $("logout-btn").addEventListener("click", logout);
-  $("settings-logout-btn").addEventListener("click", logout);
+  $("profile-logout-btn").addEventListener("click", logout);
   $("active-garden-select").addEventListener("change", event => changeActiveGarden(event.target.value));
 
   // Zone all-on / all-off
