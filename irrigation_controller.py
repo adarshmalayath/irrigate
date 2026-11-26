@@ -40,6 +40,29 @@ RAIN_MANUAL_RUN_SECS    = 10.0    # Seconds a user-requested manual run may cont
 AUTO_MODE_HOLD_SECS     = 3600.0  # Keep a user-selected Auto mode for one hour
 RAIN_SHELTERED_ZONES    = frozenset({"Side Bed", "Greenhouse"})
 
+# Per-zone Auto watering levels: (start below %, stop at %) by plant type,
+# shifted by soil type (sandy soil drains fast, clay and peat hold water).
+PLANT_MOISTURE_LEVELS = {
+    "Vegetables":   (45.0, 75.0),
+    "Herbs":        (30.0, 60.0),
+    "Flowers":      (40.0, 70.0),
+    "Lawn":         (35.0, 65.0),
+    "Fruit trees":  (35.0, 65.0),
+    "Mixed garden": (40.0, 70.0),
+    "Other":        (40.0, 70.0),
+}
+SOIL_MOISTURE_OFFSET = {
+    "Sandy": -5.0, "Chalky": -3.0, "Loamy": 0.0, "Silty": 3.0,
+    "Clay": 5.0, "Peaty": 5.0, "Other": 0.0,
+}
+
+
+def moisture_levels(plant_type: Optional[str], soil_type: Optional[str]) -> Tuple[float, float]:
+    """Return (start-watering-below %, stop-at %) for a zone's plant and soil."""
+    dry, stop = PLANT_MOISTURE_LEVELS.get(plant_type or "", (SOIL_DRY_THRESHOLD, SOIL_STOP_THRESHOLD))
+    offset = SOIL_MOISTURE_OFFSET.get(soil_type or "", 0.0)
+    return dry + offset, stop + offset
+
 
 # ────────────────────────────────────────────────────
 #  Data classes
@@ -66,6 +89,7 @@ class IrrigationController:
     def __init__(self, zones: List[str]):
         self.zones = list(zones)
         self._sheltered = set(RAIN_SHELTERED_ZONES) & set(self.zones)
+        self._levels: Dict[str, Tuple[float, float]] = {}
         self._zone_states:   Dict[str, bool]  = {z: False for z in zones}
         self._manual_overrides: Dict[str, bool] = {}
         self._mode: str = "manual"
@@ -163,11 +187,15 @@ class IrrigationController:
                 if not self._mode_locked:
                     self._apply_gps_mode_locked()
 
-    def set_zones(self, zones: List[str], sheltered=()):
+    def set_zones(self, zones: List[str], sheltered=(), types: Optional[Dict[str, Tuple]] = None):
         """Switch to a new set of zones (e.g. when the active garden changes).
-        Zones that exist in both sets keep their on/off state."""
+        Zones that exist in both sets keep their on/off state. `types` maps a
+        zone to its (plant_type, soil_type) to set its Auto watering levels."""
         with self._state_lock:
             zones = list(zones)
+            self._levels = {
+                zone: moisture_levels(*(types or {}).get(zone, (None, None))) for zone in zones
+            }
             if zones == self.zones and set(sheltered) == self._sheltered:
                 return
             self.zones = zones
@@ -371,8 +399,9 @@ class IrrigationController:
                 self._zone_states[zone] = False
                 continue
 
-            needs       = moisture < SOIL_DRY_THRESHOLD
-            should_stop = moisture >= SOIL_STOP_THRESHOLD
+            dry_level, stop_level = self._levels.get(zone, (SOIL_DRY_THRESHOLD, SOIL_STOP_THRESHOLD))
+            needs       = moisture < dry_level
+            should_stop = moisture >= stop_level
 
             if needs and tank_level >= TANK_CRITICAL_PCT:
                 self._zone_states[zone] = True
@@ -511,6 +540,11 @@ class IrrigationController:
                 "auto_mode_hold_seconds_remaining": hold_remaining,
                 "zones":                 list(self.zones),
                 "sheltered_zones":       sorted(self._sheltered),
+                "zone_levels":           {
+                    z: {"dry": self._levels.get(z, (SOIL_DRY_THRESHOLD, SOIL_STOP_THRESHOLD))[0],
+                        "stop": self._levels.get(z, (SOIL_DRY_THRESHOLD, SOIL_STOP_THRESHOLD))[1]}
+                    for z in self.zones
+                },
                 "zone_states":           self.zone_states,
                 "active_zones":          self.active_zones,
                 "user_distance_miles":   self._user_distance_miles,

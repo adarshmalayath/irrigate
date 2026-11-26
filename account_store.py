@@ -77,11 +77,17 @@ class AccountStore:
                     garden_id INTEGER NOT NULL REFERENCES gardens(id) ON DELETE CASCADE,
                     name TEXT NOT NULL,
                     sheltered INTEGER NOT NULL DEFAULT 0,
-                    sort_order INTEGER NOT NULL DEFAULT 0
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    plant_type TEXT,
+                    soil_type TEXT
                 );
                 CREATE INDEX IF NOT EXISTS gardens_user_id_idx ON gardens(user_id);
                 CREATE INDEX IF NOT EXISTS garden_zones_garden_id_idx ON garden_zones(garden_id);
             """)
+            columns = {r["name"] for r in conn.execute("PRAGMA table_info(garden_zones)")}
+            for column in ("plant_type", "soil_type"):
+                if column not in columns:
+                    conn.execute(f"ALTER TABLE garden_zones ADD COLUMN {column} TEXT")
             self._seed_missing_zones(conn)
 
     @staticmethod
@@ -109,18 +115,40 @@ class AccountStore:
 
     @staticmethod
     def _zones_for(conn, garden_id: int) -> List[Dict[str, Any]]:
+        # A zone without its own plant/soil type uses the account's main choice.
         rows = conn.execute(
-            "SELECT id, name, sheltered FROM garden_zones WHERE garden_id = ? ORDER BY sort_order, id",
+            "SELECT z.id, z.name, z.sheltered, "
+            "COALESCE(z.plant_type, u.plant_type) AS plant_type, "
+            "COALESCE(z.soil_type, u.soil_type) AS soil_type "
+            "FROM garden_zones z JOIN gardens g ON g.id = z.garden_id JOIN users u ON u.id = g.user_id "
+            "WHERE z.garden_id = ? ORDER BY z.sort_order, z.id",
             (garden_id,),
         ).fetchall()
-        return [{"id": r["id"], "name": r["name"], "sheltered": bool(r["sheltered"])} for r in rows]
+        return [
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "sheltered": bool(r["sheltered"]),
+                "plant_type": r["plant_type"],
+                "soil_type": r["soil_type"],
+            }
+            for r in rows
+        ]
 
     @staticmethod
     def _insert_zones(conn, garden_id: int, zones: Iterable[Dict[str, Any]]) -> None:
         conn.executemany(
-            "INSERT INTO garden_zones (garden_id, name, sheltered, sort_order) VALUES (?, ?, ?, ?)",
+            "INSERT INTO garden_zones (garden_id, name, sheltered, sort_order, plant_type, soil_type) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             [
-                (garden_id, zone["name"], 1 if zone.get("sheltered") else 0, index)
+                (
+                    garden_id,
+                    zone["name"],
+                    1 if zone.get("sheltered") else 0,
+                    index,
+                    zone.get("plant_type") or None,
+                    zone.get("soil_type") or None,
+                )
                 for index, zone in enumerate(zones)
             ],
         )

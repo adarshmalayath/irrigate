@@ -134,7 +134,11 @@ def _activate_garden(garden):
     zones = garden.get("zones") or [{"name": n, "sheltered": s} for n, s in DEFAULT_ZONES]
     names = [zone["name"] for zone in zones]
     sensor_hub.set_zones(names)
-    controller.set_zones(names, [zone["name"] for zone in zones if zone.get("sheltered")])
+    controller.set_zones(
+        names,
+        [zone["name"] for zone in zones if zone.get("sheltered")],
+        {zone["name"]: (zone.get("plant_type"), zone.get("soil_type")) for zone in zones},
+    )
     controller.set_home(_home_lat, _home_lon)
 
 
@@ -152,7 +156,18 @@ def _clean_zones(raw_zones, garden_name):
         if name.casefold() in seen:
             return None, f"{garden_name} has two zones called “{name}”. Use a different name for each."
         seen.add(name.casefold())
-        cleaned.append({"name": name, "sheltered": bool(zone.get("sheltered", False))})
+        plant = zone.get("plant_type") or None
+        soil = zone.get("soil_type") or None
+        if plant is not None and plant not in PLANT_TYPES:
+            return None, f"Choose a valid plant type for “{name}”."
+        if soil is not None and soil not in SOIL_TYPES:
+            return None, f"Choose a valid soil type for “{name}”."
+        cleaned.append({
+            "name": name,
+            "sheltered": bool(zone.get("sheltered", False)),
+            "plant_type": plant,
+            "soil_type": soil,
+        })
     return cleaned, None
 
 

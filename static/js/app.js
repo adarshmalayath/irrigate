@@ -156,7 +156,8 @@ function renderZoneCards() {
     const label = displayZoneLabel(name);
     const isOn  = zoneStates[name] || false;
     const m     = data.moisture;
-    const mCls  = m < 25 ? "critical" : m < 40 ? "dry" : "";
+    const dryAt = state.controller.zone_levels?.[name]?.dry ?? 40;
+    const mCls  = m < 25 ? "critical" : m < dryAt ? "dry" : "";
     const arc   = buildArc(m);
 
     const card = document.createElement("div");
@@ -164,7 +165,11 @@ function renderZoneCards() {
     card.dataset.zone = name;
     card.innerHTML = `
       <div class="zone-header">
-        <div class="zone-name">${escapeHtml(label)}</div>
+        <div class="zone-title">
+          <div class="zone-name">${escapeHtml(label)}</div>
+          ${zoneTypeText(name) ? `<div class="zone-types">${escapeHtml(zoneTypeText(name))}</div>` : ""}
+          ${state.controller.zone_levels?.[name] ? `<div class="zone-types">Auto waters below ${Math.round(state.controller.zone_levels[name].dry)}%, stops at ${Math.round(state.controller.zone_levels[name].stop)}%</div>` : ""}
+        </div>
         <div class="zone-badge ${isOn ? "on" : m < 25 ? "critical" : "off"}">
           ${isOn ? "ON" : m < 25 ? "DRY" : "OFF"}
         </div>
@@ -197,30 +202,104 @@ function renderZoneCards() {
   }
 }
 
+/* ── Futuristic garden panel: one pod per zone, animated only while watering ── */
+function heroPodMarkup(name, index) {
+  return `
+    <g class="pod" data-pod="${index}">
+      <ellipse class="pod-ring" cx="0" cy="0" rx="70" ry="15" fill="none" stroke="#34f5ff" stroke-opacity=".35"/>
+      <ellipse cx="0" cy="0" rx="62" ry="12" fill="url(#podGlow)" stroke="#34f5ff" stroke-opacity=".7"/>
+      <polygon class="pod-beam" points="-6,-193 6,-193 32,-58 -32,-58" fill="url(#beamGrad)"/>
+      <g class="pod-plant" filter="url(#neonGlow)">
+        <path d="M0,-54 C2,-80 -2,-100 0,-126" stroke="#6dff9e" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <path d="M0,-80 C-25,-85 -40,-100 -48,-118 C-28,-114 -10,-100 0,-82Z" fill="url(#leafGrad)" stroke="#c4ffd8" stroke-width=".8"/>
+        <path d="M0,-95 C25,-100 40,-115 48,-134 C28,-130 10,-115 0,-97Z" fill="url(#leafGrad)" stroke="#c4ffd8" stroke-width=".8"/>
+        <path d="M0,-110 C-18,-118 -26,-132 -30,-148 C-14,-142 -4,-128 0,-112Z" fill="url(#leafGrad)" stroke="#c4ffd8" stroke-width=".8"/>
+        <path d="M0,-125 C-8,-140 -6,-156 2,-168 C10,-154 10,-138 0,-125Z" fill="url(#leafGrad)" stroke="#c4ffd8" stroke-width=".8"/>
+      </g>
+      <path d="M-34,-50 L34,-50 L26,-4 L-26,-4 Z" fill="#0c1a23" stroke="#34f5ff" stroke-opacity=".8"/>
+      <rect x="-38" y="-57" width="76" height="8" rx="3" fill="#10303a" stroke="#34f5ff"/>
+      <ellipse cx="0" cy="-53" rx="32" ry="3.5" fill="#3a2a1d"/>
+      <ellipse class="pod-ripple" cx="0" cy="-53" rx="9" ry="2" fill="none" stroke="#7fe9ff" stroke-width="1.2"/>
+      <rect x="-20" y="-30" width="40" height="5" rx="2.5" fill="#0a2630"/>
+      <rect class="pod-moist" x="-20" y="-30" width="0" height="5" rx="2.5" fill="#34f5ff"/>
+      <g class="pod-drops" fill="#9cf0ff">
+        <ellipse cx="-12" cy="-186" rx="1.6" ry="4.5"/><ellipse cx="-4" cy="-186" rx="1.6" ry="4.5"/>
+        <ellipse cx="5" cy="-186" rx="1.6" ry="4.5"/><ellipse cx="13" cy="-186" rx="1.6" ry="4.5"/>
+        <ellipse cx="-8" cy="-186" rx="1.4" ry="4"/><ellipse cx="9" cy="-186" rx="1.4" ry="4"/>
+      </g>
+      <rect x="-26" y="-212" width="52" height="13" rx="6.5" fill="#0d222c" stroke="#34f5ff" stroke-opacity=".9"/>
+      <rect x="-5" y="-200" width="10" height="7" rx="2" fill="#123543" stroke="#34f5ff" stroke-opacity=".7"/>
+      <circle class="drone-light" cx="-18" cy="-205.5" r="2.4"/><circle class="drone-light" cx="18" cy="-205.5" r="2.4"/>
+      <text class="pod-name" x="0" y="28" text-anchor="middle">${escapeHtml(name)}</text>
+      <text class="pod-moist-text" x="0" y="44" text-anchor="middle">--</text>
+    </g>`;
+}
+
+function renderGardenHero(activeZones) {
+  const hero = $("garden-hero");
+  const pods = $("hero-pods");
+  if (!hero || !pods || !state.sensors?.zones) return;
+  const zones = orderedZoneEntries(state.sensors.zones);
+  // Pick the rows/columns that make the pods largest for the panel's current shape.
+  const n = zones.length || 1;
+  const cellW = 230, cellH = 300, HUD_SPACE = 40; // room above the pods for the status pill
+  const W = hero.clientWidth || 1200, H = hero.clientHeight || 300;
+  let best = { rows: 1, cols: n, scale: 0 };
+  for (let rows = 1; rows <= n; rows++) {
+    const cols = Math.ceil(n / rows);
+    const scale = Math.min(W / (cols * cellW), H / (rows * cellH + HUD_SPACE));
+    if (scale > best.scale + 0.01) best = { rows, cols, scale };
+  }
+  const key = `${zones.map(([name]) => name).join("\u0000")}|${best.rows}x${best.cols}`;
+  if (pods.dataset.key !== key) {
+    const vbW = Math.max(best.cols * cellW, 600), vbH = best.rows * cellH;
+    const offsetX = (vbW - best.cols * cellW) / 2;
+    hero.querySelector(".garden-hero-svg").setAttribute("viewBox", `0 ${-HUD_SPACE} ${vbW} ${vbH + HUD_SPACE}`);
+    hero.querySelector(".hero-grid").setAttribute("transform", `translate(${vbW / 2 - 600} ${vbH - 300})`);
+    pods.innerHTML = zones.map(([name], i) => {
+      const r = Math.floor(i / best.cols);
+      const inRow = Math.min(best.cols, n - r * best.cols);
+      const rowOffset = offsetX + (best.cols - inRow) * cellW / 2;
+      const x = rowOffset + cellW * ((i % best.cols) + 0.5);
+      return `<g transform="translate(${x.toFixed(1)} ${r * cellH + 246})">${heroPodMarkup(name, i)}</g>`;
+    }).join("");
+    pods.dataset.key = key;
+  }
+  const active = new Set(activeZones);
+  zones.forEach(([name, data], i) => {
+    const pod = pods.querySelector(`[data-pod="${i}"]`);
+    if (!pod) return;
+    const m = Math.max(0, Math.min(100, Number(data.moisture) || 0));
+    pod.classList.toggle("watering", active.has(name));
+    pod.querySelector(".pod-moist").setAttribute("width", (40 * m / 100).toFixed(1));
+    pod.querySelector(".pod-moist-text").textContent = `${active.has(name) ? "WATERING" : "MOISTURE"} ${m.toFixed(0)}%`;
+  });
+  const watering = active.size > 0;
+  hero.classList.toggle("watering", watering);
+  $("garden-hero-status").textContent = watering ? "WATERING" : "STANDBY";
+  $("garden-hero-sub").textContent = watering
+    ? Array.from(active).map(displayZoneLabel).join(" · ")
+    : `${zones.length} zone${zones.length === 1 ? "" : "s"} monitored`;
+  hero.setAttribute("aria-label", watering ? `Watering ${Array.from(active).join(", ")}` : "No zones watering");
+}
+
+// Re-lay out the pods when the panel changes size (window resize, phone rotation).
+if (window.ResizeObserver) {
+  document.addEventListener("DOMContentLoaded", () => {
+    const hero = document.getElementById("garden-hero");
+    if (hero) new ResizeObserver(() => {
+      if (state.sensors) renderGardenHero(state.controller?.active_zones || []);
+    }).observe(hero);
+  });
+}
+
 /* ── Irrigation banner ── */
 function renderBanner() {
   const d         = state.decision;
   const indicator = $("banner-indicator");
   const controllerActive = state.controller?.active_zones || [];
   const active    = controllerActive.length ? controllerActive : (d?.zones || []);
-  const wateringAnimation = $("watering-animation");
-
-  if (wateringAnimation) {
-    const isIrrigating = active.length > 0;
-    wateringAnimation.classList.toggle("active", isIrrigating);
-    wateringAnimation.setAttribute("aria-hidden", String(!isIrrigating));
-    $("watering-animation-label").textContent = isIrrigating
-      ? `Watering ${active.map(displayZoneLabel).join(" · ")}`
-      : "";
-    const wateringVideo = $("watering-animation-video");
-    if (isIrrigating) {
-      const playback = wateringVideo.play();
-      if (playback?.catch) playback.catch(() => {});
-    } else {
-      wateringVideo.pause();
-      if (wateringVideo.readyState > 0) wateringVideo.currentTime = 0;
-    }
-  }
+  renderGardenHero(active);
 
   if (active.length) {
     indicator.className  = "banner-indicator irrigating";
@@ -1192,6 +1271,38 @@ const DEFAULT_ZONES = [
   { name: "Greenhouse",   sheltered: true  },
 ];
 const MAX_ZONES = 8;
+const PLANT_TYPES = ["Vegetables", "Herbs", "Flowers", "Lawn", "Fruit trees", "Mixed garden", "Other"];
+const SOIL_TYPES = ["Loamy", "Clay", "Sandy", "Silty", "Peaty", "Chalky", "Other"];
+
+function makeTypeSelect(kind, options, value) {
+  const select = document.createElement("select");
+  select.className = "loc-input zone-type-select";
+  select.dataset[kind] = "";
+  select.setAttribute("aria-label", kind === "zonePlant" ? "Plant type" : "Soil type");
+  const inherit = document.createElement("option");
+  inherit.value = "";
+  inherit.textContent = kind === "zonePlant" ? "Plant: same as profile" : "Soil: same as profile";
+  select.appendChild(inherit);
+  for (const option of options) {
+    const el = document.createElement("option");
+    el.value = option;
+    el.textContent = option;
+    select.appendChild(el);
+  }
+  select.value = options.includes(value) ? value : "";
+  return select;
+}
+
+/* Plant / soil details for a zone of the active garden. */
+function zoneTypeText(zoneName) {
+  const zone = activeZoneInfo(zoneName);
+  return zone ? [zone.plant_type, zone.soil_type].filter(Boolean).join(" · ") : "";
+}
+
+function activeZoneInfo(zoneName) {
+  const garden = state.gardens.find(g => g.id === state.activeGardenId);
+  return garden?.zones?.find(z => z.name === zoneName) || null;
+}
 
 /* Fill `container` with editable rows (name + sheltered + remove) and an "Add zone" button. */
 function buildZoneEditor(container, zones) {
@@ -1234,6 +1345,8 @@ function buildZoneEditor(container, zones) {
     box.dataset.zoneSheltered = "";
     shelter.append(box, document.createTextNode("Sheltered"));
     shelter.title = "Rain can’t reach this zone (e.g. a greenhouse), so Auto mode may still water it while it rains.";
+    const plant = makeTypeSelect("zonePlant", PLANT_TYPES, zone.plant_type);
+    const soil = makeTypeSelect("zoneSoil", SOIL_TYPES, zone.soil_type);
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "icon-button remove-garden-btn";
@@ -1241,7 +1354,10 @@ function buildZoneEditor(container, zones) {
     remove.setAttribute("aria-label", "Remove zone");
     remove.textContent = "×";
     remove.addEventListener("click", () => { row.remove(); refresh(); });
-    row.append(name, shelter, remove);
+    const types = document.createElement("div");
+    types.className = "zone-edit-types";
+    types.append(plant, soil);
+    row.append(name, shelter, remove, types);
     rows.appendChild(row);
     refresh();
     return name;
@@ -1255,6 +1371,8 @@ function readZoneEditor(container) {
   return Array.from(container.querySelectorAll(".zone-edit-row")).map(row => ({
     name: row.querySelector("[data-zone-name]").value.trim(),
     sheltered: row.querySelector("[data-zone-sheltered]").checked,
+    plant_type: row.querySelector("[data-zone-plant]").value || null,
+    soil_type: row.querySelector("[data-zone-soil]").value || null,
   }));
 }
 
@@ -1298,7 +1416,9 @@ function buildProfileZones(garden) {
   for (const zone of garden.zones || []) {
     const chip = document.createElement("span");
     chip.className = "profile-zone-chip";
-    chip.textContent = zone.sheltered ? `${zone.name} · sheltered` : zone.name;
+    const parts = [zone.name, [zone.plant_type, zone.soil_type].filter(Boolean).join(" / ")];
+    if (zone.sheltered) parts.push("sheltered");
+    chip.textContent = parts.filter(Boolean).join(" · ");
     chips.appendChild(chip);
   }
   const edit = document.createElement("button");
