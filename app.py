@@ -18,7 +18,7 @@ from flask_cors import CORS
 import requests
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from account_store import AccountStore
+from account_store import AccountStore, DEFAULT_ZONES
 from sensors import SensorHub
 from weather import WeatherService
 from irrigation_controller import IrrigationController
@@ -56,7 +56,10 @@ socketio = SocketIO(
 # ─── Service singletons ─────────────────────────────
 weather_service = WeatherService()
 
-ZONES = ["Front Garden", "Back Garden", "Side Bed", "Greenhouse"]
+# Zones used until a garden with its own zones is activated.
+ZONES = [name for name, _ in DEFAULT_ZONES]
+MAX_ZONES_PER_GARDEN = 8
+MAX_ZONE_NAME_LENGTH = 40
 
 # Default location — loaded from environment variables only (never hardcoded)
 # Set HOME_LAT, HOME_LON, HOME_POSTCODE, HOME_LABEL in your .env or Render dashboard
@@ -72,6 +75,7 @@ _home_label    = os.getenv("HOME_LABEL", "My Garden")
 _lock = threading.Lock()
 _tick_start_lock = threading.Lock()
 _tick_started = False
+_last_rain_observation = None
 
 sensor_hub = SensorHub()
 controller = IrrigationController(zones=ZONES)
@@ -109,11 +113,13 @@ def _user_profile(user_id):
         active = next((g for g in gardens if g["is_primary"]), gardens[0] if gardens else None)
         if active:
             session["active_garden_id"] = active["id"]
+    tank_settings = account_store.get_tank_settings(user_id) or sensor_hub.tank.get_settings()
     return {
         **user,
         "onboarding_complete": bool(user["onboarding_complete"]),
         "gardens": gardens,
         "active_garden_id": active["id"] if active else None,
+        "tank_settings": tank_settings,
     }
 
 
@@ -125,13 +131,36 @@ def _activate_garden(garden):
         _home_lon = float(garden["longitude"])
         _home_label = garden["location_label"] or garden["name"]
         _home_postcode = garden.get("postcode", "")
+    zones = garden.get("zones") or [{"name": n, "sheltered": s} for n, s in DEFAULT_ZONES]
+    names = [zone["name"] for zone in zones]
+    sensor_hub.set_zones(names)
+    controller.set_zones(names, [zone["name"] for zone in zones if zone.get("sheltered")])
     controller.set_home(_home_lat, _home_lon)
+
+
+def _clean_zones(raw_zones, garden_name):
+    """Validate a garden's zone list. Returns (zones, error_message)."""
+    if not isinstance(raw_zones, list) or not 1 <= len(raw_zones) <= MAX_ZONES_PER_GARDEN:
+        return None, f"Give {garden_name} between 1 and {MAX_ZONES_PER_GARDEN} zones."
+    cleaned, seen = [], set()
+    for zone in raw_zones:
+        if not isinstance(zone, dict) or not isinstance(zone.get("name"), str):
+            return None, f"Each zone in {garden_name} needs a name."
+        name = " ".join(zone["name"].split())
+        if not name or len(name) > MAX_ZONE_NAME_LENGTH:
+            return None, f"Zone names in {garden_name} must be 1 to {MAX_ZONE_NAME_LENGTH} characters."
+        if name.casefold() in seen:
+            return None, f"{garden_name} has two zones called “{name}”. Use a different name for each."
+        seen.add(name.casefold())
+        cleaned.append({"name": name, "sheltered": bool(zone.get("sheltered", False))})
+    return cleaned, None
 
 
 def _activate_session_garden(user_id):
     profile = _user_profile(user_id)
     if not profile or not profile["onboarding_complete"]:
         return None
+    sensor_hub.tank.configure(profile.get("tank_settings", {}))
     garden = next((g for g in profile["gardens"] if g["id"] == profile["active_garden_id"]), None)
     if garden:
         _activate_garden(garden)
@@ -158,6 +187,30 @@ def _get_garden_weather(lat, lon):
         weather = weather.copy()
         weather["city"] = _garden_label(lat, lon)
     return weather
+
+
+def _collect_rainwater_from_weather(weather):
+    """Estimate roof runoff once per new OpenWeather observation, not each socket tick."""
+    global _last_rain_observation
+    if not weather.get("available") or not weather.get("rainfall_available"):
+        return 0.0
+    try:
+        observed_at = datetime.fromisoformat(str(weather["timestamp"]).replace("Z", "+00:00")).timestamp()
+        rainfall_mm_1h = max(0.0, float(weather.get("rainfall_mm_1h") or 0))
+    except (KeyError, TypeError, ValueError):
+        return 0.0
+    previous = _last_rain_observation
+    _last_rain_observation = (observed_at, rainfall_mm_1h)
+    if previous is None:
+        return 0.0
+    elapsed_seconds = min(1800.0, observed_at - previous[0])
+    if elapsed_seconds <= 0 or not weather.get("is_raining_now", weather.get("is_rainy")) or rainfall_mm_1h <= 0:
+        return 0.0
+    # OpenWeather's current endpoint gives the measured rain total over the
+    # previous hour. Treat that as an average hourly rate for the interval
+    # between fresh observations; this is an estimate of roof runoff.
+    rainfall_since_previous_mm = rainfall_mm_1h * elapsed_seconds / 3600
+    return sensor_hub.tank.collect_rainwater(rainfall_since_previous_mm)
 
 # Garden weather and geofencing use the configured garden point. Device GPS is
 # tracked separately and only supplies the user's current position.
@@ -188,9 +241,15 @@ def _background_tick():
             # 2. Update sensors
             active = controller.active_zones
             sensor_hub.update_all(temperature=temp, active_zones=active)
-            # The current tank is simulated; physical refill requires a connected
-            # pump/valve controller. Refill the model once it reaches 20%.
-            sensor_hub.tank.auto_refill_if_low()
+            _collect_rainwater_from_weather(weather)
+            # When the weather feed confirms dry conditions, simulate a mains
+            # top-up at 20%; while raining, let the roof catchment fill the tank.
+            rain_status = (
+                bool(weather.get("is_raining_now", weather.get("is_rainy")))
+                if weather.get("available") and weather.get("rainfall_available")
+                else None
+            )
+            sensor_hub.tank.auto_refill_if_low(rain_status)
             snap = sensor_hub.get_snapshot()
 
             # 3. Evaluate irrigation
@@ -327,7 +386,14 @@ def api_complete_onboarding():
             return jsonify({"ok": False, "error": f"Enter a name and location for Garden {index + 1}."}), 400
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
             return jsonify({"ok": False, "error": f"The coordinates for {name} are invalid."}), 400
+        if garden.get("zones") is None:
+            zones = [{"name": n, "sheltered": s} for n, s in DEFAULT_ZONES]
+        else:
+            zones, error = _clean_zones(garden.get("zones"), name)
+            if error:
+                return jsonify({"ok": False, "error": error}), 400
         cleaned.append({
+            "zones": zones,
             "name": name,
             "location_label": label,
             "latitude": lat,
@@ -408,11 +474,66 @@ def api_all_zones():
     return jsonify({"ok": True})
 
 
+@app.route("/api/gardens/<int:garden_id>/zones", methods=["POST"])
+@login_required
+def api_save_garden_zones(garden_id):
+    data = request.get_json(silent=True) or {}
+    user_id = _logged_in_user_id()
+    garden = account_store.get_garden(user_id, garden_id)
+    if garden is None:
+        return jsonify({"ok": False, "error": "That garden was not found on this account."}), 404
+    zones, error = _clean_zones(data.get("zones"), garden["name"])
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    garden = account_store.save_garden_zones(user_id, garden_id, zones)
+    if session.get("active_garden_id") == garden_id:
+        _activate_garden(garden)
+    return jsonify({"ok": True, "garden": garden, "user": _user_profile(user_id)})
+
+
 @app.route("/api/tank/refill", methods=["POST"])
 @login_required
 def api_refill():
-    sensor_hub.tank.refill(100)
-    return jsonify({"ok": True, "level": sensor_hub.tank.level})
+    sensor_hub.tank.refill_from_mains(100)
+    return jsonify({"ok": True, "tank": sensor_hub.tank.to_dict()})
+
+
+@app.route("/api/tank/settings", methods=["POST"])
+@login_required
+def api_tank_settings():
+    data = request.get_json(silent=True) or {}
+    supplier = str(data.get("water_supplier", "")).strip()
+    if len(supplier) > 80:
+        return jsonify({"ok": False, "error": "Water supplier name must be 80 characters or fewer."}), 400
+    try:
+        catchment_area_m2 = float(data.get("catchment_area_m2"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Enter a valid roof catchment area."}), 400
+    if not 1 <= catchment_area_m2 <= 1000:
+        return jsonify({"ok": False, "error": "Catchment area must be between 1 and 1000 m²."}), 400
+
+    raw_rate = data.get("water_tariff_gbp_per_m3")
+    if raw_rate in (None, ""):
+        tariff = None
+    else:
+        try:
+            tariff = float(raw_rate)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "Enter a valid water tariff in £ per m³."}), 400
+        if not 0 <= tariff <= 100:
+            return jsonify({"ok": False, "error": "Water tariff must be between £0 and £100 per m³."}), 400
+
+    user_id = _logged_in_user_id()
+    current = sensor_hub.tank.get_settings()
+    settings = {
+        "water_supplier": supplier,
+        "catchment_area_m2": catchment_area_m2,
+        "collection_efficiency": current["collection_efficiency"],
+        "water_tariff_gbp_per_m3": tariff,
+    }
+    account_store.save_tank_settings(user_id, settings)
+    sensor_hub.tank.configure(settings)
+    return jsonify({"ok": True, "user": _user_profile(user_id), "tank": sensor_hub.tank.to_dict()})
 
 
 @app.route("/api/set_home", methods=["POST"])

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🌿 Irrigate — Smart Garden</title>
-  <link rel="stylesheet" href="static/css/style.css?v=account-actions-1" />
+  <link rel="stylesheet" href="static/css/style.css?v=tank-rain-1" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <script>window.IRRIGATE_API_BASE = "https://irrigate-v3dw.onrender.com";</script>
@@ -65,6 +65,10 @@
       <label class="auth-field"><span>UK postcode</span><div class="postcode-field"><input data-garden-postcode type="text" maxlength="8" autocomplete="postal-code" placeholder="e.g. HA9 7QU" /><button class="btn btn-sm btn-outline" type="button" data-garden-find>Find</button></div></label>
     </div>
     <div class="setup-garden-actions"><button class="text-action" type="button" data-garden-gps>◎ Use current GPS</button><span data-garden-result role="status"></span></div>
+    <div class="setup-garden-zones">
+      <div class="setup-garden-zones-head"><strong>Zones in this garden</strong><span>Name each area you water. Tick “Sheltered” for areas rain can’t reach.</span></div>
+      <div data-zone-editor></div>
+    </div>
   </article>
 </template>
 
@@ -138,82 +142,9 @@
   <section class="section active" id="section-dashboard">
 
     <div class="watering-animation" id="watering-animation" aria-hidden="true">
-      <svg class="watering-animation-art" viewBox="0 0 300 176" focusable="false" role="img" aria-label="Animated potted plant on an aqua irrigation platform">
-        <defs>
-          <linearGradient id="watering-platform-side" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stop-color="#149d8c" />
-            <stop offset="1" stop-color="#075d60" />
-          </linearGradient>
-          <radialGradient id="watering-platform-surface" cx="45%" cy="32%" r="75%">
-            <stop offset="0" stop-color="#42ffe0" />
-            <stop offset=".72" stop-color="#14ddc8" />
-            <stop offset="1" stop-color="#08a999" />
-          </radialGradient>
-          <linearGradient id="watering-pot-surface" x1="0" y1="0" x2="1" y2=".7">
-            <stop offset="0" stop-color="#e8a36a" />
-            <stop offset=".48" stop-color="#b9673c" />
-            <stop offset="1" stop-color="#773d2d" />
-          </linearGradient>
-          <linearGradient id="watering-leaf-surface" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#d8f442" />
-            <stop offset=".5" stop-color="#8cca32" />
-            <stop offset="1" stop-color="#398b43" />
-          </linearGradient>
-          <linearGradient id="watering-leaf-light" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#efff73" />
-            <stop offset="1" stop-color="#83c83d" />
-          </linearGradient>
-        </defs>
-        <ellipse class="watering-shadow" cx="150" cy="155" rx="121" ry="15" />
-        <g class="watering-platform">
-          <ellipse class="watering-platform-side" cx="150" cy="141" rx="114" ry="31" />
-          <ellipse class="watering-platform-top" cx="150" cy="126" rx="114" ry="31" />
-          <ellipse class="watering-platform-edge" cx="150" cy="126" rx="108" ry="27" />
-          <ellipse class="watering-platform-highlight" cx="150" cy="127" rx="82" ry="19" />
-        </g>
-        <g class="watering-orbit">
-          <ellipse cx="150" cy="126" rx="96" ry="23" />
-          <circle class="watering-drop drop-one" cx="63" cy="120" r="2.2" />
-          <circle class="watering-drop drop-two" cx="228" cy="132" r="2.6" />
-        </g>
-        <g class="watering-plant">
-          <g class="plant-leaf leaf-left">
-            <path class="leaf-fill" d="M148 65C127 45 96 37 68 45c8 24 34 37 65 28Z" />
-            <path class="leaf-vein" d="M145 67C120 56 97 48 74 47" />
-          </g>
-          <g class="plant-leaf leaf-right">
-            <path class="leaf-fill leaf-fill-light" d="M155 61c15-26 47-36 73-21-4 25-31 40-62 30Z" />
-            <path class="leaf-vein" d="M159 64c21-12 41-19 63-22" />
-          </g>
-          <g class="plant-leaf leaf-low">
-            <path class="leaf-fill" d="M146 81c-22-15-46-15-63 0 10 19 37 23 61 7Z" />
-            <path class="leaf-vein" d="M143 84c-19-7-36-9-53-3" />
-          </g>
-          <g class="plant-leaf leaf-top">
-            <path class="leaf-fill leaf-fill-light" d="M150 53c-22-20-20-42 1-52 21 15 26 36 3 55Z" />
-            <path class="leaf-vein" d="M151 51c1-18 1-31 0-45" />
-          </g>
-          <g class="plant-leaf leaf-right-low">
-            <path class="leaf-fill" d="M157 78c18-17 39-18 54-5-10 17-29 23-52 12Z" />
-            <path class="leaf-vein" d="M160 81c16-8 30-10 45-8" />
-          </g>
-          <path class="plant-stem" d="M150 98c0-19 0-33 1-49M148 97c-2-14-12-23-23-30M153 91c7-13 16-22 27-29" />
-          <path class="plant-pot" d="M116 96h68l-8 27c-15 10-37 10-52 0Z" />
-          <ellipse class="plant-pot-rim" cx="150" cy="96" rx="35" ry="10" />
-          <ellipse class="plant-soil" cx="150" cy="96" rx="28" ry="6.4" />
-          <path class="plant-pot-shine" d="M123 101l5 18" />
-        </g>
-        <g class="irrigation-spray">
-          <path d="M221 116q13-10 25-8M220 120q17-3 30 3M218 124q10 3 17 10" />
-          <circle class="watering-drop drop-three" cx="244" cy="105" r="1.8" />
-          <circle class="watering-drop drop-four" cx="250" cy="124" r="1.5" />
-          <circle class="watering-drop drop-five" cx="235" cy="139" r="1.7" />
-        </g>
-        <g class="irrigation-emitter">
-          <rect x="216" y="119" width="5" height="14" rx="2" />
-          <circle cx="218.5" cy="118" r="3" />
-        </g>
-      </svg>
+      <video class="watering-animation-video" id="watering-animation-video" muted loop playsinline preload="metadata" poster="static/media/watering-plant-poster.jpg" tabindex="-1">
+        <source src="static/media/watering-plant.mp4" type="video/mp4" />
+      </video>
       <span class="watering-animation-label" id="watering-animation-label">Watering garden</span>
     </div>
 
@@ -265,8 +196,10 @@
           <div class="card-label">Water Tank</div>
           <div class="card-value" id="tank-pct">--%</div>
           <div class="card-sub" id="tank-litres">-- L</div>
+          <div class="card-sub" id="tank-source">Water source unavailable</div>
+          <div class="card-sub" id="tank-cost">Mains tariff not set</div>
         </div>
-        <button class="refill-btn" id="refill-btn" title="Refill tank">↺</button>
+        <button class="refill-btn" id="refill-btn" title="Top up from mains">↺</button>
       </div>
     </div>
 
@@ -443,11 +376,36 @@
         </button>
       </div>
 
+      <div class="settings-card">
+        <div class="settings-card-title">🌱 Garden Zones</div>
+        <p class="settings-desc">Each garden has its own zones. Add, rename or remove them from the garden cards in My Profile.</p>
+        <button class="btn btn-sm btn-primary" type="button" id="edit-zones-profile-btn">Edit zones in My Profile</button>
+      </div>
+
+      <div class="settings-card">
+        <div class="settings-card-title">🌧️ Rainwater &amp; Mains Tariff</div>
+        <p class="settings-desc">This tank is a software model; no rain gauge, mains valve, or pump is connected. Rain capture is estimated from live garden rainfall, roof area, and 80% collection efficiency. At 20% capacity, it waits while rain is active and simulates a mains top-up when current weather confirms dry conditions.</p>
+        <form id="tank-settings-form" class="zone-name-editor">
+          <label class="zone-name-field">Water supplier
+            <input type="text" class="loc-input" id="water-supplier-input" maxlength="80" placeholder="e.g. Severn Trent" />
+          </label>
+          <label class="zone-name-field">Roof area draining into tank (m²)
+            <input type="number" class="loc-input" id="catchment-area-input" min="1" max="1000" step="0.1" required />
+          </label>
+          <label class="zone-name-field">Mains water rate estimate (£ per m³)
+            <input type="number" class="loc-input" id="water-tariff-input" min="0" max="100" step="0.0001" placeholder="Enter the volumetric rate from your bill" />
+          </label>
+          <p class="settings-desc" style="margin:0">Default: £5.42/m³ England and Wales effective average estimate for 2026/27, calculated from the £639 average bill and typical household use. It includes fixed and wastewater costs, so it is not your supplier's exact marginal meter tariff. Replace it with your bill's volumetric rate for a closer estimate. Sources: <a href="https://www.water.org.uk/annual-average-bill-changes-2026-27" target="_blank" rel="noopener">Water UK</a>, <a href="https://www.gov.uk/government/publications/water-resources-2025-2026-analysis-of-the-water-industrys-annual-water-resources-performance/water-resources-2025-to-2026-analysis-of-the-water-industrys-annual-water-resources-performance" target="_blank" rel="noopener">Environment Agency</a>, <a href="https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/families/bulletins/familiesandhouseholds/2025" target="_blank" rel="noopener">ONS household size</a>. Rainwater has no mains usage charge.</p>
+          <button class="btn btn-sm btn-primary" type="submit">Save tank settings</button>
+          <div class="loc-feedback" id="tank-settings-feedback" role="status" aria-live="polite"></div>
+        </form>
+      </div>
+
       <!-- Location card -->
       <div class="settings-card">
         <div class="settings-card-title">📍 Garden Location</div>
         <p class="settings-desc">
-          Set where your garden is. This is used for weather data and the 50-mile geofence.
+          Set where your garden is. This is used for weather data and the 1-mile geofence.
           Your device GPS tracks <em>you</em> separately.
         </p>
 
@@ -573,6 +531,6 @@
   </div>
 </div>
 
-<script src="static/js/app.js?v=account-actions-1"></script>
+<script src="static/js/app.js?v=tank-rain-1"></script>
 </body>
 </html>

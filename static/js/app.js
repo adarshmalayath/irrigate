@@ -7,6 +7,7 @@
 const state = {
   user:       null,
   gardens:    [],
+  tankSettings: {},
   activeGardenId: null,
   plantType:  null,
   soilType:   null,
@@ -115,6 +116,15 @@ function renderWeatherCards() {
   if (tank) {
     $("tank-pct").textContent   = `${tank.level}%`;
     $("tank-litres").textContent= `${tank.litres} L / ${tank.capacity} L`;
+    const captured = Number(tank.rainwater_collected_litres || 0).toFixed(1);
+    $("tank-source").textContent = tank.is_raining === true
+      ? `Collecting rainwater · ${captured} L caught`
+      : tank.is_raining === false
+        ? `${tank.awaiting_rain ? "Waiting for rain" : `Last fill: ${tank.last_fill_source || "Not recorded"}`} · ${captured} L rain caught`
+        : "Rain status unavailable";
+    $("tank-cost").textContent = tank.water_tariff_gbp_per_m3 == null
+      ? "Mains tariff not set"
+      : `${tank.water_supplier ? `${tank.water_supplier} · ` : ""}£${Number(tank.water_tariff_gbp_per_m3).toFixed(4)}/m³ · estimated mains £${Number(tank.mains_cost_gbp_total || 0).toFixed(2)}`;
     $("card-tank").className    = "card " + (tank.level < 10 ? "danger" : tank.level < 25 ? "warn" : "");
   }
 }
@@ -127,6 +137,14 @@ function uvLabel(value) {
   return "Extreme";
 }
 
+/* Zone readings in the order the user set for the active garden
+   (HTTP responses sort object keys alphabetically). */
+function orderedZoneEntries(zones) {
+  const order = state.controller?.zones || [];
+  const rank = name => { const i = order.indexOf(name); return i === -1 ? order.length : i; };
+  return Object.entries(zones || {}).sort(([a], [b]) => rank(a) - rank(b));
+}
+
 /* ── Zone grid (dashboard) ── */
 function renderZoneCards() {
   const grid       = $("zones-grid");
@@ -134,7 +152,8 @@ function renderZoneCards() {
   const zoneStates = state.controller.zone_states || {};
   grid.innerHTML   = "";
 
-  for (const [name, data] of Object.entries(zones)) {
+  for (const [name, data] of orderedZoneEntries(zones)) {
+    const label = displayZoneLabel(name);
     const isOn  = zoneStates[name] || false;
     const m     = data.moisture;
     const mCls  = m < 25 ? "critical" : m < 40 ? "dry" : "";
@@ -145,7 +164,7 @@ function renderZoneCards() {
     card.dataset.zone = name;
     card.innerHTML = `
       <div class="zone-header">
-        <div class="zone-name">${name}</div>
+        <div class="zone-name">${escapeHtml(label)}</div>
         <div class="zone-badge ${isOn ? "on" : m < 25 ? "critical" : "off"}">
           ${isOn ? "ON" : m < 25 ? "DRY" : "OFF"}
         </div>
@@ -191,14 +210,22 @@ function renderBanner() {
     wateringAnimation.classList.toggle("active", isIrrigating);
     wateringAnimation.setAttribute("aria-hidden", String(!isIrrigating));
     $("watering-animation-label").textContent = isIrrigating
-      ? `Watering ${active.join(" · ")}`
+      ? `Watering ${active.map(displayZoneLabel).join(" · ")}`
       : "";
+    const wateringVideo = $("watering-animation-video");
+    if (isIrrigating) {
+      const playback = wateringVideo.play();
+      if (playback?.catch) playback.catch(() => {});
+    } else {
+      wateringVideo.pause();
+      if (wateringVideo.readyState > 0) wateringVideo.currentTime = 0;
+    }
   }
 
   if (active.length) {
     indicator.className  = "banner-indicator irrigating";
     $("banner-title").textContent = `Irrigating ${active.length} zone${active.length > 1 ? "s" : ""}`;
-    $("banner-sub").textContent   = [active.join(", "), d?.skip_reason].filter(Boolean).join(" · ");
+    $("banner-sub").textContent   = [active.map(displayZoneLabel).join(", "), d?.skip_reason].filter(Boolean).join(" · ");
   } else if (d?.skip_reason) {
     indicator.className  = "banner-indicator";
     $("banner-title").textContent = "Irrigation paused";
@@ -448,6 +475,10 @@ function renderSensorSection() {
   // Tank
   const tankCard = document.createElement("div");
   tankCard.className = "detail-card";
+  const tariffText = tank.water_tariff_gbp_per_m3 == null
+    ? "Not set"
+    : `£${Number(tank.water_tariff_gbp_per_m3).toFixed(4)} / m³`;
+  const lastCostText = tank.last_fill_cost_gbp == null ? "Unknown — set the meter rate" : `£${Number(tank.last_fill_cost_gbp).toFixed(4)}`;
   tankCard.innerHTML = `
     <div class="detail-card-title">🪣 Water Tank</div>
     <div class="tank-visual">
@@ -459,15 +490,22 @@ function renderSensorSection() {
     <div class="detail-row"><span class="detail-key">Volume</span><span class="detail-val">${tank.litres} L / ${tank.capacity} L</span></div>
     <div class="detail-row"><span class="detail-key">Status</span><span class="detail-val">${tank.status}</span></div>
     <div class="detail-row"><span class="detail-key">Active zones</span><span class="detail-val">${tank.active_zones}</span></div>
-    <br/><button class="btn btn-sm btn-outline" onclick="refillTank()">↺ Refill Tank</button>`;
+    <div class="detail-row"><span class="detail-key">Last fill source</span><span class="detail-val">${escapeHtml(tank.last_fill_source || "Not recorded")}</span></div>
+    <div class="detail-row"><span class="detail-key">Last fill volume</span><span class="detail-val">${Number(tank.last_fill_litres || 0).toFixed(1)} L</span></div>
+    <div class="detail-row"><span class="detail-key">Rainwater caught</span><span class="detail-val">${Number(tank.rainwater_collected_litres || 0).toFixed(1)} L</span></div>
+    <div class="detail-row"><span class="detail-key">Last mains cost estimate</span><span class="detail-val">${lastCostText}</span></div>
+    <div class="detail-row"><span class="detail-key">Mains rate</span><span class="detail-val">${tariffText}</span></div>
+    <div class="detail-row"><span class="detail-key">Mains cost estimate this session</span><span class="detail-val">${tank.water_tariff_gbp_per_m3 == null ? "Unknown — tariff not set" : `£${Number(tank.mains_cost_gbp_total || 0).toFixed(2)}`}</span></div>
+    <br/><button class="btn btn-sm btn-outline" onclick="refillTank()">↺ Top up from mains</button>`;
   grid.appendChild(tankCard);
 
-  for (const [name, data] of Object.entries(zones)) {
+  for (const [name, data] of orderedZoneEntries(zones)) {
+    const label = displayZoneLabel(name);
     const cl = data.moisture < 25 ? "critical" : data.moisture < 40 ? "low" : "";
     const card = document.createElement("div");
     card.className = "detail-card";
     card.innerHTML = `
-      <div class="detail-card-title">🌱 ${name} Moisture Sensor</div>
+      <div class="detail-card-title">🌱 ${escapeHtml(label)} Moisture Sensor</div>
       <div class="progress-wrap" style="margin-bottom:6px">
         <div class="progress"><div class="progress-fill ${cl}" style="width:${data.moisture}%"></div></div>
         <div class="progress-pct">${data.moisture}%</div>
@@ -486,13 +524,14 @@ function renderZoneDetailSection() {
   const zoneStates = state.controller.zone_states || {};
   grid.innerHTML   = "";
 
-  for (const [name, data] of Object.entries(zones)) {
+  for (const [name, data] of orderedZoneEntries(zones)) {
+    const label = displayZoneLabel(name);
     const isOn = zoneStates[name] || false;
     const cl   = data.moisture < 25 ? "critical" : data.moisture < 40 ? "low" : "";
     const card = document.createElement("div");
     card.className = "detail-card";
     card.innerHTML = `
-      <div class="detail-card-title">🌿 ${name}</div>
+      <div class="detail-card-title">🌿 ${escapeHtml(label)}</div>
       <div class="detail-row">
         <span class="detail-key">Irrigation</span>
         <div class="toggle-wrap">
@@ -598,7 +637,19 @@ function toggleAllZones(on) {
 
 function refillTank() {
   fetch(`${API_BASE}/api/tank/refill`, { method: "POST", credentials: "include" })
-    .then(() => showToast("🚿 Tank refilled to 100%!", "success"));
+    .then(async response => {
+      const body = await response.json();
+      if (!response.ok || !body.ok) throw new Error(body.error || "Could not top up the tank.");
+      if (state.sensors) state.sensors.tank = body.tank;
+      if (state.weather) renderWeatherCards();
+      if (state.sensors && state.controller) renderSensorSection();
+      if (body.tank.last_fill_cost_gbp == null) {
+        showToast("Tank topped up from mains. Add your metered tariff in Settings to estimate the cost.", "info");
+      } else {
+        showToast(`Mains top-up cost estimate: £${Number(body.tank.last_fill_cost_gbp).toFixed(2)}`, "success");
+      }
+    })
+    .catch(error => showToast(error.message || "Could not top up the tank.", "warning"));
 }
 
 window.toggleZone   = toggleZone;
@@ -901,6 +952,7 @@ function addOnboardingGarden(initial = {}) {
     }
   });
   row.querySelector("[data-garden-gps]").addEventListener("click", () => setOnboardingGardenGPS(row));
+  buildZoneEditor(row.querySelector("[data-zone-editor]"), initial.zones || DEFAULT_ZONES);
   list.appendChild(fragment);
   renumberOnboardingGardens();
 }
@@ -1016,6 +1068,7 @@ async function submitOnboarding(event) {
     location_label: row.dataset.locationLabel || "",
     latitude: row.dataset.latitude,
     longitude: row.dataset.longitude,
+    zones: readZoneEditor(row.querySelector("[data-zone-editor]")),
   }));
   $("onboarding-error").textContent = "";
   button.disabled = true;
@@ -1041,6 +1094,7 @@ async function submitOnboarding(event) {
 function renderGardenProfile(user) {
   state.user = user;
   state.gardens = user.gardens || [];
+  state.tankSettings = user.tank_settings || {};
   state.activeGardenId = user.active_garden_id ?? state.gardens[0]?.id ?? null;
   state.plantType = user.plant_type;
   state.soilType = user.soil_type;
@@ -1071,7 +1125,220 @@ function renderGardenProfile(user) {
   }));
   select.value = state.activeGardenId == null ? "" : String(state.activeGardenId);
   wrap.classList.toggle("hidden", state.gardens.length < 2);
+  renderTankSettingsEditor();
   renderSettingsSection();
+}
+
+function displayZoneLabel(zoneId) {
+  return zoneId;
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, character => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[character]);
+}
+
+function renderTankSettingsEditor() {
+  const settings = state.tankSettings || {};
+  $("water-supplier-input").value = settings.water_supplier || "";
+  $("catchment-area-input").value = settings.catchment_area_m2 ?? 20;
+  $("water-tariff-input").value = settings.water_tariff_gbp_per_m3 ?? "";
+}
+
+async function saveTankSettings(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('button[type="submit"]');
+  const feedback = $("tank-settings-feedback");
+  const rawRate = $("water-tariff-input").value.trim();
+  const settings = {
+    water_supplier: $("water-supplier-input").value.trim(),
+    catchment_area_m2: Number($("catchment-area-input").value),
+    water_tariff_gbp_per_m3: rawRate === "" ? null : Number(rawRate),
+  };
+  button.disabled = true;
+  feedback.className = "loc-feedback loading";
+  feedback.textContent = "Saving tank settings…";
+  try {
+    const response = await fetch(`${API_BASE}/api/tank/settings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(settings),
+    });
+    const body = await response.json();
+    if (!response.ok || !body.ok) throw new Error(body.error || "Could not save tank settings.");
+    if (state.sensors) state.sensors.tank = body.tank;
+    renderGardenProfile(body.user);
+    if (state.weather) renderWeatherCards();
+    if (state.sensors && state.controller) renderSensorSection();
+    feedback.className = "loc-feedback ok";
+    feedback.textContent = "Tank and tariff settings saved to your account.";
+    showToast("Tank settings saved", "success");
+  } catch (error) {
+    feedback.className = "loc-feedback error";
+    feedback.textContent = error.message || "Could not save tank settings.";
+  } finally {
+    button.disabled = false;
+  }
+}
+
+// ─── Per-garden zone editor ─────────────────────
+const DEFAULT_ZONES = [
+  { name: "Front Garden", sheltered: false },
+  { name: "Back Garden",  sheltered: false },
+  { name: "Side Bed",     sheltered: true  },
+  { name: "Greenhouse",   sheltered: true  },
+];
+const MAX_ZONES = 8;
+
+/* Fill `container` with editable rows (name + sheltered + remove) and an "Add zone" button. */
+function buildZoneEditor(container, zones) {
+  container.replaceChildren();
+  const rows = document.createElement("div");
+  rows.className = "zone-list-editor";
+  const footer = document.createElement("div");
+  footer.className = "zone-edit-footer";
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "text-action";
+  add.textContent = "＋ Add zone";
+  const count = document.createElement("span");
+  count.className = "zone-edit-count";
+  footer.append(add, count);
+
+  const refresh = () => {
+    const all = rows.querySelectorAll(".zone-edit-row");
+    all.forEach(r => { r.querySelector("[data-zone-remove]").disabled = all.length === 1; });
+    add.disabled = all.length >= MAX_ZONES;
+    count.textContent = `${all.length} of ${MAX_ZONES} zones`;
+  };
+  const addRow = (zone = { name: "", sheltered: false }) => {
+    const row = document.createElement("div");
+    row.className = "zone-edit-row";
+    const name = document.createElement("input");
+    name.type = "text";
+    name.className = "loc-input";
+    name.maxLength = 40;
+    name.required = true;
+    name.placeholder = "e.g. Veg patch";
+    name.value = zone.name || "";
+    name.dataset.zoneName = "";
+    name.setAttribute("aria-label", "Zone name");
+    const shelter = document.createElement("label");
+    shelter.className = "zone-sheltered";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = Boolean(zone.sheltered);
+    box.dataset.zoneSheltered = "";
+    shelter.append(box, document.createTextNode("Sheltered"));
+    shelter.title = "Rain can’t reach this zone (e.g. a greenhouse), so Auto mode may still water it while it rains.";
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "icon-button remove-garden-btn";
+    remove.dataset.zoneRemove = "";
+    remove.setAttribute("aria-label", "Remove zone");
+    remove.textContent = "×";
+    remove.addEventListener("click", () => { row.remove(); refresh(); });
+    row.append(name, shelter, remove);
+    rows.appendChild(row);
+    refresh();
+    return name;
+  };
+  add.addEventListener("click", () => addRow().focus());
+  (zones && zones.length ? zones : DEFAULT_ZONES).forEach(zone => addRow(zone));
+  container.append(rows, footer);
+}
+
+function readZoneEditor(container) {
+  return Array.from(container.querySelectorAll(".zone-edit-row")).map(row => ({
+    name: row.querySelector("[data-zone-name]").value.trim(),
+    sheltered: row.querySelector("[data-zone-sheltered]").checked,
+  }));
+}
+
+async function saveGardenZones(garden, editorEl, feedback, button) {
+  button.disabled = true;
+  feedback.className = "loc-feedback loading";
+  feedback.textContent = "Saving zones…";
+  try {
+    const response = await fetch(`${API_BASE}/api/gardens/${garden.id}/zones`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ zones: readZoneEditor(editorEl) }),
+    });
+    const body = await response.json();
+    if (!response.ok || !body.ok) throw new Error(body.error || "Could not save zones.");
+    renderGardenProfile(body.user);
+    if (garden.id === state.activeGardenId) {
+      const statusResponse = await fetch(`${API_BASE}/api/status`, { credentials: "include" });
+      if (statusResponse.ok) {
+        const status = await statusResponse.json();
+        state.weather = status.weather;
+        state.sensors = status.sensors;
+        state.controller = status.controller;
+        renderAll();
+      }
+    }
+    showToast(`Zones saved for ${garden.name}`, "success");
+  } catch (error) {
+    feedback.className = "loc-feedback error";
+    feedback.textContent = error.message || "Could not save zones.";
+    button.disabled = false;
+  }
+}
+
+function buildProfileZones(garden) {
+  const wrap = document.createElement("div");
+  wrap.className = "profile-garden-zones";
+  const chips = document.createElement("div");
+  chips.className = "profile-zone-chips";
+  for (const zone of garden.zones || []) {
+    const chip = document.createElement("span");
+    chip.className = "profile-zone-chip";
+    chip.textContent = zone.sheltered ? `${zone.name} · sheltered` : zone.name;
+    chips.appendChild(chip);
+  }
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.className = "btn btn-sm btn-outline";
+  edit.textContent = "Edit zones";
+  const panel = document.createElement("div");
+  panel.className = "hidden";
+  edit.addEventListener("click", () => {
+    const editorEl = document.createElement("div");
+    buildZoneEditor(editorEl, garden.zones);
+    const actions = document.createElement("div");
+    actions.className = "profile-zone-actions";
+    const save = document.createElement("button");
+    save.type = "button";
+    save.className = "btn btn-sm btn-primary";
+    save.textContent = "Save zones";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "btn btn-sm btn-ghost";
+    cancel.textContent = "Cancel";
+    const feedback = document.createElement("div");
+    feedback.className = "loc-feedback";
+    feedback.setAttribute("role", "status");
+    save.addEventListener("click", () => saveGardenZones(garden, editorEl, feedback, save));
+    cancel.addEventListener("click", () => {
+      panel.classList.add("hidden");
+      panel.replaceChildren();
+      chips.classList.remove("hidden");
+      edit.classList.remove("hidden");
+    });
+    actions.append(save, cancel, feedback);
+    panel.replaceChildren(editorEl, actions);
+    panel.classList.remove("hidden");
+    chips.classList.add("hidden");
+    edit.classList.add("hidden");
+    editorEl.querySelector("[data-zone-name]")?.focus();
+  });
+  wrap.append(chips, edit, panel);
+  return wrap;
 }
 
 function renderProfileGardens() {
@@ -1110,7 +1377,7 @@ function renderProfileGardens() {
       button.addEventListener("click", () => changeActiveGarden(garden.id));
       status.appendChild(button);
     }
-    card.append(icon, details, status);
+    card.append(icon, details, status, buildProfileZones(garden));
     list.appendChild(card);
   }
 }
@@ -1210,6 +1477,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("auth-signup-tab").addEventListener("click", () => setAuthMode("signup"));
   $("auth-form").addEventListener("submit", submitAccount);
   $("onboarding-form").addEventListener("submit", submitOnboarding);
+  $("edit-zones-profile-btn").addEventListener("click", () => navigate("profile"));
+  $("tank-settings-form").addEventListener("submit", saveTankSettings);
   $("add-onboarding-garden").addEventListener("click", () => addOnboardingGarden());
   $("profile-btn").addEventListener("click", () => navigate("profile"));
   $("sidebar-logout-btn").addEventListener("click", logout);

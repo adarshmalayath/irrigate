@@ -64,7 +64,8 @@ class IrrigationController:
     """Stateful controller that owns zone on/off states and makes decisions."""
 
     def __init__(self, zones: List[str]):
-        self.zones = zones
+        self.zones = list(zones)
+        self._sheltered = set(RAIN_SHELTERED_ZONES) & set(self.zones)
         self._zone_states:   Dict[str, bool]  = {z: False for z in zones}
         self._manual_overrides: Dict[str, bool] = {}
         self._mode: str = "manual"
@@ -161,6 +162,22 @@ class IrrigationController:
                 self._expire_auto_mode_hold_locked()
                 if not self._mode_locked:
                     self._apply_gps_mode_locked()
+
+    def set_zones(self, zones: List[str], sheltered=()):
+        """Switch to a new set of zones (e.g. when the active garden changes).
+        Zones that exist in both sets keep their on/off state."""
+        with self._state_lock:
+            zones = list(zones)
+            if zones == self.zones and set(sheltered) == self._sheltered:
+                return
+            self.zones = zones
+            self._sheltered = set(sheltered) & set(zones)
+            self._zone_states = {z: self._zone_states.get(z, False) for z in zones}
+            self._manual_overrides = {
+                z: v for z, v in self._manual_overrides.items() if z in self._zone_states
+            }
+            if not any(self._zone_states.values()):
+                self._cancel_rain_manual_override()
 
     # ──────────────── Manual controls ────────────────
 
@@ -329,6 +346,8 @@ class IrrigationController:
 
         zones_to_water = []
         for zone, zdata in zones_snapshot.items():
+            if zone not in self._zone_states:
+                continue  # snapshot taken just before the active garden changed
             moisture = zdata.get("moisture", 50)
             is_on    = self._zone_states.get(zone, False)
 
@@ -341,14 +360,14 @@ class IrrigationController:
                 self._zone_states[zone] = False
                 continue
 
-            # Rain does not reach the sheltered Side Bed or Greenhouse, so
-            # those zones may follow their soil readings during rain and in
+            # Rain does not reach zones marked as sheltered (e.g. a greenhouse),
+            # so those zones may follow their soil readings during rain and in
             # the forecast window. Exposed zones stay paused as before.
-            if is_rainy and zone not in RAIN_SHELTERED_ZONES:
+            if is_rainy and zone not in self._sheltered:
                 self._zone_states[zone] = False
                 continue
 
-            if rain_soon and moisture > 30 and zone not in RAIN_SHELTERED_ZONES:
+            if rain_soon and moisture > 30 and zone not in self._sheltered:
                 self._zone_states[zone] = False
                 continue
 
@@ -490,6 +509,8 @@ class IrrigationController:
                 "mode":                  self._mode,
                 "mode_locked":           self._mode_locked,
                 "auto_mode_hold_seconds_remaining": hold_remaining,
+                "zones":                 list(self.zones),
+                "sheltered_zones":       sorted(self._sheltered),
                 "zone_states":           self.zone_states,
                 "active_zones":          self.active_zones,
                 "user_distance_miles":   self._user_distance_miles,

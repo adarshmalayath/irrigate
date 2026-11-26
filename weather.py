@@ -51,6 +51,9 @@ class WeatherService:
             "weather_desc": message,
             "weather_icon": "",
             "is_rainy": False,
+            "is_raining_now": None,
+            "rainfall_mm_1h": None,
+            "rainfall_available": False,
             "rain_next_24h": False,
             "precipitation_mm_24h": None,
             "precipitation_available": False,
@@ -221,6 +224,11 @@ class WeatherService:
         current_rain = current_payload.get("rain", {})
         current_snow = current_payload.get("snow", {})
         is_rainy = weather_main in ("Rain", "Drizzle", "Thunderstorm", "Snow") or bool(current_rain or current_snow)
+        is_raining_now = weather_main in ("Rain", "Drizzle", "Thunderstorm", "Snow")
+        try:
+            rainfall_mm_1h = max(0.0, float(current_rain.get("1h", 0) or 0))
+        except (TypeError, ValueError):
+            rainfall_mm_1h = 0.0
 
         now_epoch = datetime.now(timezone.utc).timestamp()
         next_24h = [
@@ -260,6 +268,9 @@ class WeatherService:
             "weather_desc": conditions.get("description", "").title(),
             "weather_icon": conditions.get("icon", ""),
             "is_rainy": is_rainy,
+            "is_raining_now": is_raining_now,
+            "rainfall_mm_1h": round(rainfall_mm_1h, 2),
+            "rainfall_available": True,
             "rain_next_24h": rain_next_24h,
             "precipitation_mm_24h": precipitation_mm_24h,
             "precipitation_available": bool(next_24h),

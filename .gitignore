@@ -28,3 +28,7 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+
+# ── Database ─────────────────────────────
+irrigate.db
